@@ -1,0 +1,15 @@
+# Netlify publica solo la carpeta app/. El resto del repositorio no se sirve en internet.
+[build]
+  publish = "app"
+
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "no-cache"
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "no-referrer"
+    X-Robots-Tag = "noindex, nofollow"
