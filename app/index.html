@@ -1,9 +1,26 @@
-<title>Agenda de Medicina</title>
-<meta name="claude:viewport-fit-sides" content="cover">
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Mi agenda</title>
+<meta name="robots" content="noindex,nofollow">
+<meta name="theme-color" content="#F4EEE2" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#1B1814" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Agenda">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
+html{-webkit-text-size-adjust:100%;color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+body{margin:0}
+[hidden]{display:none!important}
 /* Layout: cabecera con vistas Día / Semana / Mes sobre fondo beige; contenido en tarjetas blancas.
    Rojo = pendiente, verde = hecha. El color de asignatura solo aparece en etiquetas y bloques. */
 :root{
@@ -237,7 +254,13 @@ h1,h2,p{margin:0}
   .time{width:46px}
   .dh-wd{font-size:24px}
 }
+button{touch-action:manipulation}
+input.in,select.in{font-size:16px}
+.foot{margin-top:28px;display:flex;justify-content:center}
+.linkbtn{color:var(--muted);font-size:13px;text-decoration:underline;padding:8px}
 </style>
+</head>
+<body>
 
 <div class="shell" id="shell">
   <header class="top">
@@ -264,8 +287,9 @@ h1,h2,p{margin:0}
     </div>
   </header>
   <div class="legend" id="legend" role="group" aria-label="Filtrar por asignatura"></div>
-  <p class="notice" id="notice" hidden>Las tareas se están guardando solo en este navegador.</p>
+  <p class="notice" id="notice" role="status" hidden></p>
   <main id="view"></main>
+  <footer class="foot"><button type="button" class="linkbtn" id="logout">Cerrar sesión en este dispositivo</button></footer>
 </div>
 
 <div class="overlay" id="overlay" hidden>
@@ -281,7 +305,7 @@ h1,h2,p{margin:0}
     <p class="hint" id="kind-hint"></p>
     <div class="fld">
       <label for="f-title" id="f-title-l">Título</label>
-      <input id="f-title" class="in" type="text" autocomplete="off">
+      <input id="f-title" class="in" type="text" autocomplete="off" maxlength="300">
     </div>
     <div class="grid2">
       <div class="fld">
@@ -330,6 +354,18 @@ h1,h2,p{margin:0}
       <button type="button" class="ghost" id="f-cancel">Cancelar</button>
       <button type="submit" class="primary">Guardar</button>
     </div>
+  </form>
+</div>
+<div class="overlay" id="clave-overlay" hidden>
+  <form class="sheet" id="clave-form" role="dialog" aria-modal="true" aria-labelledby="clave-title" novalidate>
+    <div class="sheet-head"><h2 id="clave-title">Entrar en tu agenda</h2></div>
+    <p class="hint">Escribe tu clave de acceso. Se guarda solo en este dispositivo.</p>
+    <div class="fld">
+      <label for="clave-in">Clave</label>
+      <input id="clave-in" class="in" type="password" autocomplete="current-password" autocapitalize="off" autocorrect="off" spellcheck="false">
+    </div>
+    <p class="err" id="clave-err" role="alert" hidden></p>
+    <div class="sheet-actions"><span class="sp"></span><button type="submit" class="primary">Entrar</button></div>
   </form>
 </div>
 <div class="toast" id="toast" role="status" hidden></div>
@@ -422,9 +458,14 @@ function toast(m){
 }
 
 /* ---------- Estado y almacenamiento ---------- */
+/* Las tareas viven en Supabase y se acceden con una función protegida por clave.
+   En el dispositivo se guardan una copia (para abrir sin conexión) y una cola de
+   cambios pendientes de enviar. */
+var API='https://oigcuosxnugyhexvukua.supabase.co/functions/v1/tareas';
 var tasks=new Map();
 var ready=false;
-var store={mode:'loading',col:null};
+var net={status:'loading',msg:''}; /* loading | ok | offline | error | clave */
+var outbox=new Map(); /* id -> {type:'upsert',tarea} | {type:'delete'} */
 var viewPref=pref('view');
 var state={
   view:(viewPref==='day'||viewPref==='week'||viewPref==='month')?viewPref:'day',
@@ -442,7 +483,7 @@ function clean(id,raw){
   if(!raw||(raw.kind!=='org'&&raw.kind!=='open'&&raw.kind!=='personal')||typeof raw.title!=='string') return null;
   if(!/^\d{4}-\d{2}-\d{2}$/.test(raw.date||'')&&!(raw.kind==='personal'&&!raw.date)) return null;
   return {
-    id:id,kind:raw.kind,title:raw.title,date:raw.date,
+    id:id,kind:raw.kind,title:raw.title,date:raw.date||'',
     subject:subjectById(raw.subject)?raw.subject:'',
     color:COLOR_IDS.has(raw.color)?raw.color:'',
     type:typeof raw.type==='string'?raw.type:'',
@@ -452,81 +493,176 @@ function clean(id,raw){
   };
 }
 function body(t){
-  return {kind:t.kind,title:t.title,date:t.date,subject:t.subject||'',color:t.color||'',type:t.type||'',start:t.start||'',end:t.end||'',done:!!t.done,created:t.created||Date.now()};
+  return {kind:t.kind,title:t.title,date:t.date||'',subject:t.subject||'',color:t.color||'',type:t.type||'',start:t.start||'',end:t.end||'',done:!!t.done,created:t.created||Date.now()};
 }
 
-var writeQ=new Map();
-function enqueue(id,fn){
-  var prev=writeQ.get(id)||Promise.resolve();
-  var next=prev.catch(function(){}).then(fn);
-  writeQ.set(id,next);
-  var clear=function(){if(writeQ.get(id)===next) writeQ.delete(id)};
-  next.then(clear,clear);
-  return next;
+function loadJson(key,fallback){
+  try{var v=JSON.parse(pref(key));return v==null?fallback:v}catch(e){return fallback}
 }
-function writeFail(e){
-  if(window.console) console.warn('Agenda: no se pudo guardar',e);
-  toast('No se pudo guardar el cambio. Revisa la conexión e inténtalo de nuevo.');
+function saveCache(){pref('tasks',JSON.stringify(Array.from(tasks.values())))}
+function saveOutbox(){pref('outbox',JSON.stringify(Array.from(outbox.entries())))}
+function getClave(){return pref('clave')||''}
+function applyOutbox(){
+  outbox.forEach(function(o,id){
+    if(o.type==='delete') tasks.delete(id);
+    else tasks.set(id,o.tarea);
+  });
 }
-function persistLocal(){pref('tasks',JSON.stringify(Array.from(tasks.values())))}
 
+async function api(op,extra){
+  var res;
+  try{
+    res=await fetch(API,{
+      method:'POST',
+      headers:{'Content-Type':'application/json','x-clave':getClave()},
+      body:JSON.stringify(Object.assign({op:op},extra||{}))
+    });
+  }catch(e){
+    var off=new Error('Sin conexión');off.code='offline';throw off;
+  }
+  var data={};
+  try{data=await res.json()}catch(e){}
+  if(res.status===401){var bad=new Error('Clave incorrecta');bad.code='clave';throw bad}
+  if(!res.ok){
+    var err=new Error(data.error||('Error '+res.status));
+    err.code=res.status>=500?'server':'client';
+    throw err;
+  }
+  return data;
+}
+
+/* Cambios locales: se aplican al momento y se envían en cuanto hay conexión */
+function afterLocalChange(){saveCache();saveOutbox();render();sync()}
 function addTask(data){
   var id=newId();
-  if(store.mode==='db'){
-    return enqueue(id,function(){return store.col.doc(id).set(body(data))}).catch(writeFail);
-  }
-  tasks.set(id,Object.assign({id:id},body(data)));
-  persistLocal();render();
+  var t=Object.assign({id:id},body(data));
+  tasks.set(id,t);
+  outbox.set(id,{type:'upsert',tarea:t});
+  afterLocalChange();
   return Promise.resolve();
 }
 function patch(id,p){
-  if(store.mode==='db'){
-    return enqueue(id,function(){return store.col.doc(id).update(p)}).catch(writeFail);
-  }
   var t=tasks.get(id);
-  if(t){tasks.set(id,Object.assign({},t,p));persistLocal();render()}
+  if(!t) return Promise.resolve();
+  var nt=Object.assign({},t,p);
+  tasks.set(id,nt);
+  outbox.set(id,{type:'upsert',tarea:nt});
+  afterLocalChange();
   return Promise.resolve();
 }
 function removeTask(id){
-  if(store.mode==='db'){
-    return enqueue(id,function(){return store.col.doc(id).delete()}).catch(writeFail);
-  }
-  tasks.delete(id);persistLocal();render();
+  tasks.delete(id);
+  outbox.set(id,{type:'delete'});
+  afterLocalChange();
   return Promise.resolve();
 }
 
-function startLocal(){
-  store.mode='local';store.col=null;tasks.clear();
-  try{
-    var arr=JSON.parse(pref('tasks')||'[]');
-    arr.forEach(function(r){var t=clean(r&&r.id,r);if(t) tasks.set(t.id,t)});
-  }catch(e){}
-  ready=true;render();
+/* Sincronización: primero se envía lo pendiente y después se descarga la lista completa */
+var syncing=false,again=false;
+function sigOf(){
+  var list=Array.from(tasks.values()).sort(function(a,b){return a.id<b.id?-1:1});
+  return JSON.stringify(list)+'|'+outbox.size+'|'+net.status+'|'+ready;
 }
-async function initStore(){
-  var db=null,uid=null;
-  try{
-    if(window.claude&&typeof window.claude.use==='function'){
-      var res=await Promise.all([window.claude.use('db'),window.claude.use('user')]);
-      db=res[0];
-      uid=res[1]?await res[1].id():null;
+async function enviar(){
+  var snap=Array.from(outbox.entries());
+  var ups=snap.filter(function(e){return e[1].type==='upsert'});
+  var dels=snap.filter(function(e){return e[1].type==='delete'});
+  function quitar(e){if(outbox.get(e[0])===e[1]) outbox.delete(e[0])}
+  for(var i=0;i<ups.length;i+=50){
+    var chunk=ups.slice(i,i+50);
+    var filas=chunk.map(function(e){return Object.assign({id:e[0]},body(e[1].tarea))});
+    try{
+      await api('upsert',{tareas:filas});
+      chunk.forEach(quitar);
+    }catch(err){
+      if(err.code!=='client') throw err;
+      /* el servidor rechazó el lote: se aísla la tarea inválida para que no bloquee a las demás */
+      for(var k=0;k<chunk.length;k++){
+        try{await api('upsert',{tareas:[filas[k]]})}
+        catch(e2){
+          if(e2.code!=='client') throw e2;
+          toast('No se pudo guardar «'+filas[k].title+'»: '+e2.message);
+        }
+        quitar(chunk[k]);
+      }
     }
-  }catch(e){}
-  if(db&&uid){
-    store.mode='db';
-    store.col=db.collection('data/users/'+uid);
-    store.col.onSnapshot(function(snap){
-      tasks.clear();
-      snap.docs.forEach(function(d){var t=clean(d.id,d.data());if(t) tasks.set(t.id,t)});
-      ready=true;render();
-    },function(err){
-      if(window.console) console.warn('Agenda: sin conexión con el almacenamiento',err);
-      toast('No se pudo conectar con tu almacenamiento. Se usa este navegador.');
-      startLocal();
-    });
-  }else{
-    startLocal();
   }
+  for(var j=0;j<dels.length;j++){
+    try{await api('delete',{id:dels[j][0]})}
+    catch(err){if(err.code!=='client') throw err}
+    quitar(dels[j]);
+  }
+  saveOutbox();
+}
+async function sync(){
+  if(syncing){again=true;return}
+  if(!getClave()){net.status='clave';openClave();render();return}
+  syncing=true;
+  var before=sigOf();
+  try{
+    if(outbox.size) await enviar();
+    var r=await api('list');
+    tasks.clear();
+    (r.tareas||[]).forEach(function(raw){var t=clean(raw&&raw.id,raw);if(t) tasks.set(t.id,t)});
+    applyOutbox();
+    saveCache();
+    net.status='ok';net.msg='';
+    closeClave();
+  }catch(e){
+    if(e.code==='clave'){
+      pref('clave','');net.status='clave';
+      openClave('Clave incorrecta. Revisa que esté bien escrita.');
+    }else if(e.code==='offline'||e.code==='server'){
+      net.status='offline';
+    }else{
+      net.status='error';net.msg=e.message;
+    }
+  }finally{
+    syncing=false;ready=true;
+    if(sigOf()!==before) render();
+    if(again){again=false;sync()}
+  }
+}
+
+/* Pantalla de clave */
+function openClave(msg){
+  var o=$('#clave-overlay');
+  var err=$('#clave-err');
+  err.textContent=msg||'';err.hidden=!msg;
+  if(!o.hidden) return;
+  o.hidden=false;
+  shell.inert=true;
+  document.body.style.overflow='hidden';
+  setTimeout(function(){$('#clave-in').focus()},0);
+}
+function closeClave(){
+  var o=$('#clave-overlay');
+  if(o.hidden) return;
+  o.hidden=true;
+  if(overlay.hidden){shell.inert=false;document.body.style.overflow=''}
+}
+function updateNotice(){
+  var n=$('#notice'),p=outbox.size,txt='';
+  if(net.status==='offline'){
+    txt='Sin conexión. '+(p?p+(p===1?' cambio pendiente de enviar.':' cambios pendientes de enviar.'):'Se muestran las últimas tareas guardadas.');
+  }else if(net.status==='error'){
+    txt='No se pudo sincronizar: '+net.msg;
+  }
+  n.textContent=txt;n.hidden=!txt;
+}
+
+function startApp(){
+  loadJson('tasks',[]).forEach(function(r){var t=clean(r&&r.id,r);if(t) tasks.set(t.id,t)});
+  loadJson('outbox',[]).forEach(function(e){
+    if(Array.isArray(e)&&e[1]&&(e[1].type==='delete'||(e[1].type==='upsert'&&e[1].tarea))) outbox.set(e[0],e[1]);
+  });
+  applyOutbox();
+  ready=tasks.size>0||!getClave();
+  render();
+  sync();
+  document.addEventListener('visibilitychange',function(){if(!document.hidden) sync()});
+  window.addEventListener('online',function(){sync()});
+  setInterval(function(){if(!document.hidden&&getClave()) sync()},30000);
 }
 
 /* ---------- Consultas ---------- */
@@ -573,7 +709,7 @@ function render(){
   document.querySelectorAll('.lg').forEach(function(b){
     b.setAttribute('aria-pressed',String(b.dataset.subject===state.filter));
   });
-  $('#notice').hidden=store.mode!=='local';
+  updateNotice();
   document.querySelectorAll('[data-area]').forEach(function(b){
     b.setAttribute('aria-pressed',String(b.dataset.area===state.area));
   });
@@ -660,7 +796,7 @@ function renderDay(idx,todayKey){
     it.org.length?h('div',{class:'agenda'},it.org.map(orgRow))
       :h('p',{class:'empty'},'Sin clases, seminarios ni prácticas este día.')));
 
-  var input=h('input',{id:'quick',class:'in',type:'text',autocomplete:'off','data-fk':'quick',
+  var input=h('input',{id:'quick',class:'in',type:'text',autocomplete:'off',maxlength:300,'data-fk':'quick',
     'aria-label':'Nueva tarea abierta',placeholder:'Nueva tarea: estudiar tema 4 de Farmacología…',value:state.quickDraft,
     oninput:function(e){state.quickDraft=e.target.value}});
   var sel=subjectSelect('quick-subject',state.quickSubject,'Sin asignatura');
@@ -771,7 +907,7 @@ function renderPersonal(){
         h('div',{class:'bar'},h('i',{style:'width:'+Math.round(done/total*100)+'%'})))
       :h('div',{class:'prog-txt muted'},'Sin tareas')));
 
-  var input=h('input',{id:'p-quick',class:'in',type:'text',autocomplete:'off','data-fk':'pquick',
+  var input=h('input',{id:'p-quick',class:'in',type:'text',autocomplete:'off',maxlength:300,'data-fk':'pquick',
     'aria-label':'Nueva tarea personal',placeholder:'Nueva tarea: llamar al dentista…',value:state.pDraft,
     oninput:function(e){state.pDraft=e.target.value}});
   var date=h('input',{id:'p-date',class:'in',type:'date','aria-label':'Fecha (opcional)',value:state.pDate,
@@ -969,7 +1105,30 @@ form.addEventListener('submit',async function(e){
 });
 
 /* ---------- Arranque ---------- */
+
+/* Clave y cierre de sesión */
+$('#clave-form').addEventListener('submit',function(e){
+  e.preventDefault();
+  var v=$('#clave-in').value.trim();
+  if(!v){var er=$('#clave-err');er.textContent='Escribe tu clave.';er.hidden=false;return}
+  pref('clave',v);
+  $('#clave-in').value='';
+  $('#clave-err').hidden=true;
+  sync();
+});
+$('#logout').addEventListener('click',function(){
+  if(outbox.size){toast('Hay cambios sin enviar. Espera a tener conexión antes de cerrar sesión.');return}
+  pref('clave','');pref('tasks','[]');
+  tasks.clear();net.status='clave';ready=true;
+  render();openClave();
+});
+
+if('serviceWorker' in navigator){
+  window.addEventListener('load',function(){navigator.serviceWorker.register('sw.js').catch(function(){})});
+}
 render();
-initStore();
+startApp();
 })();
 </script>
+</body>
+</html>
