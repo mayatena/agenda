@@ -17,6 +17,7 @@ Las tareas están en el proyecto **Agenda** de Supabase (tabla `tareas`). La tab
 - Los cambios se aplican al momento en pantalla y se envían en cuanto hay conexión. Sin conexión, la app abre con la última copia y guarda los cambios pendientes.
 - La app se sincroniza al abrirla, al volver a ella y cada 30 segundos.
 - Las tareas añadidas desde el chat con Claude se escriben en la misma tabla, así que aparecen en el móvil en la siguiente sincronización.
+- Cada hora, una tarea programada de Supabase (`arrastrar_pendientes`) pasa al día vigente las tareas abiertas y personales con fecha que quedaron sin hacer. El día cambia a las 3:00 (hora de Madrid). Las tareas organizadas (clases, seminarios) no se mueven.
 
 ## Publicar
 
