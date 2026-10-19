@@ -1,8 +1,8 @@
 // Service worker: guarda la app para abrirla sin conexión.
 // Red primero (así las actualizaciones llegan solas) y copia local como respaldo.
 // Las tareas no pasan por aquí: la app las guarda ella misma en el dispositivo.
-const CACHE = 'agenda-v1';
-const BASE = ['./', 'index.html', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png'];
+const CACHE = 'agenda-v2';
+const BASE = ['./', 'index.html', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png', 'apple-touch-icon.png'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(BASE)).then(() => self.skipWaiting()));
