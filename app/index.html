@@ -586,11 +586,56 @@ function removeTask(id){
   return Promise.resolve();
 }
 
+/* Notas: misma idea que las tareas (copia local y cola de cambios pendientes) */
+var gOutbox=new Map(); /* id -> {type:'upsert',nota} | {type:'delete'} */
+function saveGOutbox(){pref('goutbox',JSON.stringify(Array.from(gOutbox.entries())))}
+function gChanged(){saveGrades();saveGOutbox();render();sync()}
+function gBody(g){return {id:g.id,subject:g.subject,name:g.name,score:g.score,weight:g.weight,created:g.created||0}}
+async function syncNotas(){
+  var snap=Array.from(gOutbox.entries());
+  var ups=snap.filter(function(e){return e[1].type==='upsert'});
+  var dels=snap.filter(function(e){return e[1].type==='delete'});
+  function quitar(e){if(gOutbox.get(e[0])===e[1]) gOutbox.delete(e[0])}
+  for(var i=0;i<ups.length;i+=50){
+    var chunk=ups.slice(i,i+50);
+    try{
+      await api('notas_upsert',{notas:chunk.map(function(e){return gBody(e[1].nota)})});
+      chunk.forEach(quitar);
+    }catch(err){
+      if(err.code!=='client') throw err;
+      for(var k=0;k<chunk.length;k++){
+        try{await api('notas_upsert',{notas:[gBody(chunk[k][1].nota)]})}
+        catch(e2){
+          if(e2.code!=='client') throw e2;
+          toast('No se pudo guardar la nota «'+chunk[k][1].nota.name+'»: '+e2.message);
+        }
+        quitar(chunk[k]);
+      }
+    }
+  }
+  for(var j=0;j<dels.length;j++){
+    try{await api('notas_delete',{id:dels[j][0]})}
+    catch(err){if(err.code!=='client') throw err}
+    quitar(dels[j]);
+  }
+  saveGOutbox();
+  var r=await api('notas_list');
+  var lista=[];
+  (r.notas||[]).forEach(function(raw){var g=cleanGrade(raw);if(g) lista.push(g)});
+  gOutbox.forEach(function(o,id){
+    lista=lista.filter(function(x){return x.id!==id});
+    if(o.type==='upsert') lista.push(o.nota);
+  });
+  grades=lista;
+  saveGrades();
+  pref('gsync','1');
+}
+
 /* Sincronización: primero se envía lo pendiente y después se descarga la lista completa */
 var syncing=false,again=false;
 function sigOf(){
   var list=Array.from(tasks.values()).sort(function(a,b){return a.id<b.id?-1:1});
-  return JSON.stringify(list)+'|'+outbox.size+'|'+net.status+'|'+ready;
+  return JSON.stringify(list)+'|'+JSON.stringify(grades)+'|'+outbox.size+'|'+gOutbox.size+'|'+net.status+'|'+ready;
 }
 async function enviar(){
   var snap=Array.from(outbox.entries());
@@ -635,6 +680,7 @@ async function sync(){
     (r.tareas||[]).forEach(function(raw){var t=clean(raw&&raw.id,raw);if(t) tasks.set(t.id,t)});
     applyOutbox();
     saveCache();
+    try{await syncNotas()}catch(e){if(e.code==='clave') throw e}
     net.status='ok';net.msg='';
     closeClave();
   }catch(e){
@@ -671,7 +717,7 @@ function closeClave(){
   if(overlay.hidden){shell.inert=false;document.body.style.overflow=''}
 }
 function updateNotice(){
-  var n=$('#notice'),p=outbox.size,txt='';
+  var n=$('#notice'),p=outbox.size+gOutbox.size,txt='';
   if(net.status==='offline'){
     txt='Sin conexión. '+(p?p+(p===1?' cambio pendiente de enviar.':' cambios pendientes de enviar.'):'Se muestran las últimas tareas guardadas.');
   }else if(net.status==='error'){
@@ -686,6 +732,11 @@ function startApp(){
     if(Array.isArray(e)&&e[1]&&(e[1].type==='delete'||(e[1].type==='upsert'&&e[1].tarea))) outbox.set(e[0],e[1]);
   });
   applyOutbox();
+  loadJson('goutbox',[]).forEach(function(e){
+    if(Array.isArray(e)&&e[1]&&(e[1].type==='delete'||(e[1].type==='upsert'&&cleanGrade(e[1].nota)))) gOutbox.set(e[0],e[1]);
+  });
+  /* Primera vez con sincronización de notas: las que ya había en este dispositivo se envían */
+  if(pref('gsync')!=='1') grades.forEach(function(g){if(!gOutbox.has(g.id)) gOutbox.set(g.id,{type:'upsert',nota:Object.assign({},g)})});
   ready=tasks.size>0||!getClave();
   render();
   sync();
@@ -716,14 +767,14 @@ function colorOf(t){
 }
 
 /* ---------- Notas y nota final ---------- */
-/* Se guardan solo en este dispositivo (no pasan por Supabase). Cada nota: asignatura, nombre,
+/* Se guardan en Supabase igual que las tareas (copia local + cambios pendientes de enviar). Cada nota: asignatura, nombre,
    calificación sobre 10 y porcentaje que pesa en la nota final de la asignatura. */
 var grades=[];
 function cleanGrade(g){
   if(!g||typeof g.id!=='string'||typeof g.name!=='string'||!subjectById(g.subject)) return null;
   var sc=+g.score,w=+g.weight;
   if(!isFinite(sc)||sc<0||sc>10||!isFinite(w)||w<=0||w>100) return null;
-  return {id:g.id,subject:g.subject,name:g.name.slice(0,60),score:sc,weight:w};
+  return {id:g.id,subject:g.subject,name:g.name.slice(0,60),score:sc,weight:w,created:+g.created||0};
 }
 (function(){
   try{
@@ -768,15 +819,17 @@ function renderNotas(){
     else gErr='';
     if(gErr){render();return}
     var name=gDraft.name.trim()||'Nota';
+    var saved;
     if(gDraft.id){
-      var g=grades.find(function(x){return x.id===gDraft.id});
-      if(g){g.subject=gDraft.subject;g.name=name;g.score=sc;g.weight=w}
+      saved=grades.find(function(x){return x.id===gDraft.id});
+      if(saved){saved.subject=gDraft.subject;saved.name=name;saved.score=sc;saved.weight=w}
     }else{
-      grades.push({id:'g'+newId(),subject:gDraft.subject,name:name,score:sc,weight:w});
+      saved={id:'g'+newId(),subject:gDraft.subject,name:name,score:sc,weight:w,created:Date.now()};
+      grades.push(saved);
     }
-    saveGrades();
+    if(saved) gOutbox.set(saved.id,{type:'upsert',nota:Object.assign({},saved)});
     gDraft={id:null,subject:gDraft.subject,name:'',score:'',weight:''};
-    render();
+    gChanged();
   }},
     h('div',{class:'sec-head'},h('h2',null,editing?'Editar nota':'Añadir nota')),
     h('div',{class:'gfields'},
@@ -793,7 +846,7 @@ function renderNotas(){
   wrap.append(f2);
 
   SUBJECTS.forEach(function(sub){wrap.append(subjectGradeCard(sub))});
-  wrap.append(h('p',{class:'gnote'},'Las notas se guardan solo en este dispositivo.'));
+  wrap.append(h('p',{class:'gnote'},'Las notas se sincronizan igual que las tareas.'));
   return wrap;
 }
 
@@ -848,9 +901,9 @@ function subjectGradeCard(sub){
         if(armed){
           grades=grades.filter(function(x){return x.id!==g.id});
           if(gDraft.id===g.id) gDraft={id:null,subject:gDraft.subject,name:'',score:'',weight:''};
-          gArm=null;saveGrades();
-        }else gArm=g.id;
-        render();
+          gArm=null;gOutbox.set(g.id,{type:'delete'});
+          gChanged();
+        }else{gArm=g.id;render()}
       }},armed?'¿Seguro?':'✕')));
   });
   card.append(list);
@@ -1296,9 +1349,9 @@ $('#clave-form').addEventListener('submit',function(e){
   sync();
 });
 $('#logout').addEventListener('click',function(){
-  if(outbox.size){toast('Hay cambios sin enviar. Espera a tener conexión antes de cerrar sesión.');return}
-  pref('clave','');pref('tasks','[]');
-  tasks.clear();net.status='clave';ready=true;
+  if(outbox.size||gOutbox.size){toast('Hay cambios sin enviar. Espera a tener conexión antes de cerrar sesión.');return}
+  pref('clave','');pref('tasks','[]');pref('grades','[]');pref('goutbox','[]');pref('gsync','');
+  tasks.clear();grades=[];gDraft={id:null,subject:'',name:'',score:'',weight:''};net.status='clave';ready=true;
   render();openClave();
 });
 

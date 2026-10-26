@@ -1,4 +1,4 @@
-// Acceso a las tareas de la agenda. Se autentica con una clave propia (cabecera x-clave),
+// Acceso a las tareas y a las notas de la agenda. Se autentica con una clave propia (cabecera x-clave),
 // por eso el despliegue no exige JWT. La tabla no tiene acceso público: solo esta función
 // (con la clave de servicio) puede leer y escribir.
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -81,6 +81,37 @@ function validar(raw: any) {
   };
 }
 
+function numero(v: unknown, nombre: string): number {
+  const n = typeof v === "number" ? v : typeof v === "string" && /^\d+(\.\d+)?$/.test(v.trim()) ? Number(v) : NaN;
+  if (!Number.isFinite(n)) throw new Error(`${nombre} no es válido`);
+  return n;
+}
+
+function validarNota(raw: any) {
+  if (!raw || typeof raw !== "object") throw new Error("Nota no válida");
+  const id = texto(raw.id, 64, "id", true);
+  if (!/^[A-Za-z0-9_-]+$/.test(id)) throw new Error("id no válido");
+  const subject = texto(raw.subject, 20, "asignatura", true);
+  if (!/^[a-z]+$/.test(subject)) throw new Error("asignatura no válida");
+  const score = numero(raw.score, "nota");
+  if (score < 0 || score > 10) throw new Error("nota no válida");
+  const weight = numero(raw.weight, "porcentaje");
+  if (!(weight > 0 && weight <= 100)) throw new Error("porcentaje no válido");
+  const created = Number(raw.created);
+  return {
+    id,
+    subject,
+    name: texto(raw.name, 60, "nombre") || "Nota",
+    score: Math.round(score * 100) / 100,
+    weight: Math.round(weight * 100) / 100,
+    created: Number.isFinite(created) && created >= 0 ? Math.floor(created) : 0,
+  };
+}
+
+function notaAApp(f: any) {
+  return { id: f.id, subject: f.subject, name: f.name, score: Number(f.score), weight: Number(f.weight), created: Number(f.created) };
+}
+
 function aApp(f: any) {
   return {
     id: f.id,
@@ -144,13 +175,32 @@ Deno.serve(async (req: Request) => {
         if (error) throw error;
         return json({ ok: true });
       }
+      case "notas_list": {
+        const { data, error } = await db.from("notas").select("*").order("created", { ascending: true }).limit(2000);
+        if (error) throw error;
+        return json({ notas: (data ?? []).map(notaAApp) });
+      }
+      case "notas_upsert": {
+        const lista = Array.isArray(cuerpo.notas) ? cuerpo.notas : [];
+        if (lista.length < 1 || lista.length > MAX_BATCH) return json({ error: "Número de notas no válido" }, 400);
+        const filas = lista.map(validarNota);
+        const { error } = await db.from("notas").upsert(filas, { onConflict: "id" });
+        if (error) throw error;
+        return json({ ok: true, guardadas: filas.length });
+      }
+      case "notas_delete": {
+        const id = texto(cuerpo.id, 64, "id", true);
+        const { error } = await db.from("notas").delete().eq("id", id);
+        if (error) throw error;
+        return json({ ok: true });
+      }
       default:
         return json({ error: "Operación no válida" }, 400);
     }
   } catch (e) {
     const mensaje = e instanceof Error ? e.message : "Error";
     // Errores de validación (los lanzamos nosotros) se devuelven; los de base de datos se ocultan.
-    const esValidacion = /^(Falta|Tarea|Tipo|id |fecha|asignatura|color|título|hora|tipo)/.test(mensaje) ||
+    const esValidacion = /^(Falta|Tarea|Nota|Tipo|id |fecha|asignatura|color|título|hora|tipo|nota|porcentaje|nombre)/.test(mensaje) ||
       /no es válid|no válid|demasiado largo/.test(mensaje);
     if (esValidacion) return json({ error: mensaje }, 400);
     console.error("Error en la función tareas:", e);
