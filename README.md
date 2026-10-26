@@ -6,8 +6,8 @@ Agenda de Medicina instalable en el móvil: vistas de día, semana (desde el lun
 
 - `app/`: la aplicación (HTML, manifiesto, service worker e iconos). Es lo único que se publica en internet.
 - `netlify.toml`: indica a Netlify que publique solo `app/`.
-- `supabase/migrations/`: SQL de la tabla `tareas`.
-- `supabase/functions/tareas/`: función que lee y escribe las tareas.
+- `supabase/migrations/`: SQL de las tablas `tareas` y `notas` y de la tarea programada.
+- `supabase/functions/tareas/`: función que lee y escribe las tareas y las notas.
 
 ## Cómo funcionan los datos
 
@@ -18,7 +18,7 @@ Las tareas están en el proyecto **Agenda** de Supabase (tabla `tareas`). La tab
 - La app se sincroniza al abrirla, al volver a ella y cada 30 segundos.
 - Las tareas añadidas desde el chat con Claude se escriben en la misma tabla, así que aparecen en el móvil en la siguiente sincronización.
 - Cada hora, una tarea programada de Supabase (`arrastrar_pendientes`) pasa al día vigente las tareas abiertas y personales con fecha que quedaron sin hacer. El día cambia a las 3:00 (hora de Madrid). Las tareas organizadas (clases, seminarios) no se mueven.
-- La pestaña **Notas** guarda calificaciones por asignatura con su porcentaje en la nota final. Esas notas se guardan solo en el dispositivo (localStorage), no en Supabase.
+- La pestaña **Notas** guarda calificaciones por asignatura con su porcentaje en la nota final. Las notas están en la tabla `notas` de Supabase y se sincronizan igual que las tareas (copia local, cola de cambios pendientes). La función `tareas` atiende también las operaciones `notas_list`, `notas_upsert` y `notas_delete`.
 
 ## Publicar
 
