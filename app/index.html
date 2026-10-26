@@ -105,6 +105,33 @@ h1,h2,p{margin:0}
 .dot{width:9px;height:9px;border-radius:50%;background:var(--c);flex:none}
 .lg[aria-pressed="true"]{background:color-mix(in srgb,var(--c) 18%,var(--surface));border-color:var(--c)}
 .notice{font-size:13px;color:var(--muted);margin-bottom:12px}
+.badge.alt{background:var(--surface-2);color:var(--muted);border:1px solid var(--line)}
+/* Notas */
+.notas{display:grid;gap:14px}
+.gfields{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.gf{display:flex;flex-direction:column;gap:4px;min-width:0}
+.gf>span{font-size:12px;font-weight:600;color:var(--muted)}
+.gf-wide{grid-column:1/-1}
+.gerr{color:var(--pend-ink);font-weight:600;margin:10px 0 0}
+.gbtns{display:flex;gap:8px;margin-top:12px}
+.ghead{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.gtitle{display:flex;align-items:center;gap:8px;font-size:17px;font-weight:700}
+.gbig{text-align:right;line-height:1.1}
+.gbig b{display:block;font-size:30px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--pend-ink)}
+.gbig.ok b{color:var(--done-ink)}
+.gbig small{font-size:12px;color:var(--muted);font-weight:500}
+.gchip{margin:10px 0;padding:8px 12px;border-radius:10px;font-size:14px;font-weight:600}
+.gchip.ok{background:var(--done-bg);color:var(--done-ink)}
+.gchip.bad{background:var(--pend-bg);color:var(--pend-ink)}
+.gextra{color:var(--muted);font-size:14px;margin:10px 0 0}
+.glist{margin-top:10px}
+.grow{display:flex;align-items:center;gap:8px;border-top:1px solid var(--line)}
+.gedit{flex:1;min-width:0;display:flex;justify-content:space-between;gap:12px;text-align:left;padding:11px 0}
+.gname{font-weight:500;overflow-wrap:anywhere}
+.gval{flex:none;color:var(--muted);font-variant-numeric:tabular-nums}
+.gdel{flex:none;min-width:36px;min-height:36px;padding:0 10px;border-radius:9px;color:var(--muted);font-weight:700}
+.gdel.armed{background:var(--pend);color:#fff}
+.gnote{color:var(--muted);font-size:13px;text-align:center;margin:0}
 
 /* Tarjetas */
 .card{background:var(--surface);border:1px solid var(--line);border-radius:16px}
@@ -273,6 +300,7 @@ input.in,select.in{font-size:16px}
       <div class="seg" role="group" aria-label="Sección">
         <button type="button" data-area="uni" aria-pressed="true">Universidad</button>
         <button type="button" data-area="personal" aria-pressed="false">Personal</button>
+        <button type="button" data-area="notas" aria-pressed="false">Notas</button>
       </div>
       <div class="seg" id="viewctl" role="group" aria-label="Vista">
         <button type="button" data-view="day" aria-pressed="true">Día</button>
@@ -474,7 +502,7 @@ var state={
   filter:null,
   quickDraft:'',
   quickSubject:'',
-  area:pref('area')==='personal'?'personal':'uni',
+  area:(pref('area')==='personal'||pref('area')==='notas')?pref('area'):'uni',
   pDraft:'',
   pDate:'',
   lastKind:pref('kind')==='open'?'open':'org'
@@ -687,6 +715,148 @@ function colorOf(t){
   return subjectColor(t.subject);
 }
 
+/* ---------- Notas y nota final ---------- */
+/* Se guardan solo en este dispositivo (no pasan por Supabase). Cada nota: asignatura, nombre,
+   calificación sobre 10 y porcentaje que pesa en la nota final de la asignatura. */
+var grades=[];
+function cleanGrade(g){
+  if(!g||typeof g.id!=='string'||typeof g.name!=='string'||!subjectById(g.subject)) return null;
+  var sc=+g.score,w=+g.weight;
+  if(!isFinite(sc)||sc<0||sc>10||!isFinite(w)||w<=0||w>100) return null;
+  return {id:g.id,subject:g.subject,name:g.name.slice(0,60),score:sc,weight:w};
+}
+(function(){
+  try{
+    var a=JSON.parse(pref('grades')||'[]');
+    if(Array.isArray(a)) a.forEach(function(g){var c=cleanGrade(g);if(c) grades.push(c)});
+  }catch(e){}
+})();
+function saveGrades(){pref('grades',JSON.stringify(grades))}
+function parseNum(v){
+  var t=String(v).trim().replace(',','.');
+  return /^\d+(\.\d+)?$/.test(t)?parseFloat(t):NaN;
+}
+function r2(n){return Math.round(n*100)/100}
+function fmtN(n){return r2(n).toLocaleString('es-ES',{maximumFractionDigits:2})}
+function gradeSummary(subjectId){
+  var list=grades.filter(function(g){return g.subject===subjectId});
+  var w=0,pts=0;
+  list.forEach(function(g){w+=g.weight;pts+=g.score*g.weight/100});
+  return {list:list,w:r2(w),pts:pts};
+}
+var gDraft={id:null,subject:'',name:'',score:'',weight:''};
+var gErr='',gArm=null;
+
+function renderNotas(){
+  var wrap=h('div',{class:'notas'});
+
+  var editing=!!gDraft.id;
+  var sel=subjectSelect('g-subject',gDraft.subject,'Asignatura…');
+  sel.setAttribute('data-fk','g-subject');
+  sel.addEventListener('change',function(){gDraft.subject=sel.value});
+  function field(key,label,ph,mode,fk){
+    return h('label',{class:'gf'+(key==='name'?' gf-wide':'')},h('span',null,label),
+      h('input',{class:'in',type:'text',autocomplete:'off',inputmode:mode,maxlength:key==='name'?60:6,placeholder:ph,
+        'data-fk':fk,value:gDraft[key],oninput:function(e){gDraft[key]=e.target.value}}));
+  }
+  var f2=h('form',{class:'card sec gform',novalidate:true,onsubmit:function(e){
+    e.preventDefault();
+    var sc=parseNum(gDraft.score),w=parseNum(gDraft.weight);
+    if(!gDraft.subject) gErr='Elige la asignatura.';
+    else if(!(sc>=0&&sc<=10)) gErr='La nota tiene que estar entre 0 y 10 (por ejemplo 7,5).';
+    else if(!(w>0&&w<=100)) gErr='El porcentaje tiene que ser mayor que 0 y como máximo 100.';
+    else gErr='';
+    if(gErr){render();return}
+    var name=gDraft.name.trim()||'Nota';
+    if(gDraft.id){
+      var g=grades.find(function(x){return x.id===gDraft.id});
+      if(g){g.subject=gDraft.subject;g.name=name;g.score=sc;g.weight=w}
+    }else{
+      grades.push({id:'g'+newId(),subject:gDraft.subject,name:name,score:sc,weight:w});
+    }
+    saveGrades();
+    gDraft={id:null,subject:gDraft.subject,name:'',score:'',weight:''};
+    render();
+  }},
+    h('div',{class:'sec-head'},h('h2',null,editing?'Editar nota':'Añadir nota')),
+    h('div',{class:'gfields'},
+      h('label',{class:'gf gf-wide'},h('span',null,'Asignatura'),sel),
+      field('name','Nombre','Parcial 1','text','g-name'),
+      field('score','Nota (0-10)','7,5','decimal','g-score'),
+      field('weight','% de la nota final','30','decimal','g-weight')),
+    gErr?h('p',{class:'gerr',role:'alert'},gErr):null,
+    h('div',{class:'gbtns'},
+      h('button',{type:'submit',class:'primary'},editing?'Guardar cambios':'Añadir nota'),
+      editing?h('button',{type:'button',class:'ghost',onclick:function(){
+        gDraft={id:null,subject:gDraft.subject,name:'',score:'',weight:''};gErr='';render();
+      }},'Cancelar'):null));
+  wrap.append(f2);
+
+  SUBJECTS.forEach(function(sub){wrap.append(subjectGradeCard(sub))});
+  wrap.append(h('p',{class:'gnote'},'Las notas se guardan solo en este dispositivo.'));
+  return wrap;
+}
+
+function subjectGradeCard(sub){
+  var sm=gradeSummary(sub.id);
+  var complete=sm.w===100,over=sm.w>100,some=sm.list.length>0;
+  var card=h('section',{class:'card sec gcard',style:cs(sub.color)});
+
+  var head=h('div',{class:'ghead'},
+    h('h3',{class:'gtitle'},h('i',{class:'dot'}),sub.name));
+  if(some){
+    head.append(h('div',{class:'gbig'+(complete?' ok':'')},
+      h('b',null,fmtN(sm.pts)),
+      h('small',null,complete?'Nota final':'puntos de 10 hasta ahora')));
+  }
+  card.append(head);
+
+  if(!some){
+    card.append(h('p',{class:'empty'},'Sin notas todavía.'));
+    return card;
+  }
+
+  var chip;
+  if(complete) chip=h('p',{class:'gchip ok'},'Nota final calculada: los porcentajes suman el 100 %.');
+  else if(over) chip=h('p',{class:'gchip bad'},'Los porcentajes suman '+fmtN(sm.w)+' %, más del 100 %. Revisa los pesos.');
+  else chip=h('p',{class:'gchip bad'},'Nota no calculada del todo: llevas evaluado el '+fmtN(sm.w)+' % y falta el '+fmtN(100-sm.w)+' %.');
+  card.append(chip);
+  card.append(h('div',{class:'bar','aria-hidden':'true'},h('i',{style:'width:'+Math.min(100,sm.w)+'%'})));
+
+  if(!complete&&!over){
+    var media=sm.pts/(sm.w/100);
+    var extra='Media de lo evaluado: '+fmtN(media)+'. ';
+    if(sm.pts>=5) extra+='Ya tienes el 5 asegurado.';
+    else{
+      var need=(5-sm.pts)/((100-sm.w)/100);
+      extra+=need>10?'Con lo que falta ya no se llega al 5.'
+        :'Para llegar al 5 necesitas una media de '+fmtN(Math.ceil(need*100)/100)+' en el '+fmtN(100-sm.w)+' % que falta.';
+    }
+    card.append(h('p',{class:'gextra'},extra));
+  }
+
+  var list=h('div',{class:'glist'});
+  sm.list.forEach(function(g){
+    var armed=gArm===g.id;
+    list.append(h('div',{class:'grow'},
+      h('button',{type:'button',class:'gedit','data-fk':'ge'+g.id,'aria-label':'Editar '+g.name,onclick:function(){
+        gDraft={id:g.id,subject:g.subject,name:g.name,score:String(g.score).replace('.',','),weight:String(g.weight).replace('.',',')};
+        gErr='';gArm=null;render();window.scrollTo({top:0,behavior:'smooth'});
+      }},h('span',{class:'gname'},g.name),
+        h('span',{class:'gval'},fmtN(g.score)+' · '+fmtN(g.weight)+' %')),
+      h('button',{type:'button',class:'gdel'+(armed?' armed':''),'aria-label':(armed?'Confirmar: eliminar ':'Eliminar ')+g.name,onclick:function(){
+        if(armed){
+          grades=grades.filter(function(x){return x.id!==g.id});
+          if(gDraft.id===g.id) gDraft={id:null,subject:gDraft.subject,name:'',score:'',weight:''};
+          gArm=null;saveGrades();
+        }else gArm=g.id;
+        render();
+      }},armed?'¿Seguro?':'✕')));
+  });
+  card.append(list);
+  return card;
+}
+
 /* ---------- Render ---------- */
 function render(){
   var ae=document.activeElement;
@@ -697,8 +867,10 @@ function render(){
   var todayKey=fmtKey(new Date());
   var c=state.cursor;
   var personal=state.area==='personal';
+  var notas=state.area==='notas';
   var period='';
   if(personal) period='Fuera de la universidad';
+  else if(notas) period='Notas y nota final';
   else if(state.view==='day'){var ws=startOfWeek(c);period='Semana · '+rangeText(ws,addDays(ws,6))}
   else if(state.view==='week'){var s=startOfWeek(c);period=rangeText(s,addDays(s,6))}
   else period=cap(MONTHS[c.getMonth()])+' '+c.getFullYear();
@@ -714,7 +886,7 @@ function render(){
   document.querySelectorAll('[data-area]').forEach(function(b){
     b.setAttribute('aria-pressed',String(b.dataset.area===state.area));
   });
-  $('#viewctl').hidden=personal;$('#navctl').hidden=personal;$('#legend').hidden=personal;
+  $('#viewctl').hidden=personal||notas;$('#navctl').hidden=personal||notas;$('#legend').hidden=personal||notas;$('#add').hidden=notas;
 
   var view=$('#view');
   if(!ready){
@@ -722,7 +894,7 @@ function render(){
     return;
   }
   var idx=buildIndex();
-  var node=personal?renderPersonal():state.view==='day'?renderDay(idx,todayKey):state.view==='week'?renderWeek(idx,todayKey):renderMonth(idx,todayKey);
+  var node=notas?renderNotas():personal?renderPersonal():state.view==='day'?renderDay(idx,todayKey):state.view==='week'?renderWeek(idx,todayKey):renderMonth(idx,todayKey);
   view.replaceChildren(node);
 
   if(fk){
@@ -761,6 +933,12 @@ function subjectSelect(id,value,first){
   return sel;
 }
 
+function dayBadge(key,todayKey){
+  var t=parseKey(todayKey);
+  var txt=key===todayKey?'Hoy':key===fmtKey(addDays(t,-1))?'Ayer':key===fmtKey(addDays(t,1))?'Mañana':'';
+  return txt?h('span',{class:'badge'+(key===todayKey?'':' alt')},txt):null;
+}
+
 function renderDay(idx,todayKey){
   var d=state.cursor,key=fmtKey(d);
   var it=idx.get(key)||{org:[],open:[]};
@@ -769,7 +947,7 @@ function renderDay(idx,todayKey){
 
   wrap.append(h('section',{class:'card dayhead'},
     h('div',null,
-      h('div',{class:'dh-wd'},cap(WD_LONG[wdi(d)]),key===todayKey?h('span',{class:'badge'},'Hoy'):null),
+      h('div',{class:'dh-wd'},cap(WD_LONG[wdi(d)]),dayBadge(key,todayKey)),
       h('div',{class:'dh-date'},d.getDate()+' de '+MONTHS[d.getMonth()]+' de '+d.getFullYear())),
     total?h('div',{class:'prog-wrap'},
         h('div',{class:'prog-txt'},h('b',{class:'g'},done),' hechas · ',h('b',{class:'r'},pending),' pendientes'),
@@ -813,7 +991,7 @@ function renderDay(idx,todayKey){
   wrap.append(h('section',{class:'card sec'},
     h('div',{class:'sec-head'},
       h('h2',null,'Por hacer',total?h('span',null,done+' de '+total):null)),
-    total?h('div',{class:'tasks'},it.open.map(taskRow)):h('p',{class:'empty'},'Nada pendiente. Añade lo que quieras hacer hoy.'),
+    total?h('div',{class:'tasks'},it.open.map(taskRow)):h('p',{class:'empty'},key===todayKey?'Nada pendiente. Añade lo que quieras hacer hoy.':'Nada pendiente este día. Añade lo que quieras hacer.'),
     form));
   return wrap;
 }
