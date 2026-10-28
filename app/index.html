@@ -249,9 +249,14 @@ h1,h2,p{margin:0}
 .sheet-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
 .sheet-head h2{font-size:20px;font-weight:700}
 .hint{font-size:13px;color:var(--muted);margin:8px 0 16px}
-.fld{display:grid;gap:6px;margin-bottom:14px;min-width:0}
+.fld{display:grid;grid-template-columns:minmax(0,1fr);gap:6px;margin-bottom:14px;min-width:0}
 .fld > label,.lbl{font-size:13px;font-weight:700;color:var(--muted)}
-.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.grid2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px}
+/* Safari de iPhone da a los campos de fecha y hora un ancho propio que desborda la columna: se anula */
+input.in[type="date"],input.in[type="time"]{-webkit-appearance:none;appearance:none;display:block;width:100%;min-width:0;max-width:100%;box-sizing:border-box;min-height:44px;text-align:left;line-height:1.2}
+input.in[type="date"]::-webkit-date-and-time-value,input.in[type="time"]::-webkit-date-and-time-value{text-align:left;min-width:0}
+input.in[type="date"]::-webkit-datetime-edit,input.in[type="time"]::-webkit-datetime-edit{padding:0}
+.fld>.in,.fld>select.in{box-sizing:border-box;max-width:100%}
 .swatches{display:flex;flex-wrap:wrap;gap:8px;padding-top:2px}
 .sw{position:relative;display:block}
 .sw input{position:absolute;opacity:0;width:100%;height:100%;inset:0;margin:0;cursor:pointer}
