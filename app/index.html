@@ -159,6 +159,14 @@ h1,h2,p{margin:0}
 .sec-head h2 span{font-weight:500;letter-spacing:.02em;text-transform:none;margin-left:6px}
 .agenda{display:flex;flex-direction:column;gap:8px}
 .row{display:flex;gap:12px;align-items:stretch}
+.agenda2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,.7fr);gap:6px 14px;align-items:start}
+.acol{min-width:0}
+.acol-h{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:700;margin:0 0 8px}
+.agenda2 .acol+.acol{border-left:1px solid var(--line);padding-left:14px}
+.agenda2 .row{flex-direction:column;gap:3px}
+.agenda2 .time{width:auto;text-align:left;padding-top:0;font-size:13px}
+.agenda2 .time small{display:inline;font-size:13px}
+.agenda2 .time small::before{content:" – "}
 .time{width:52px;flex:none;text-align:right;font-variant-numeric:tabular-nums;font-weight:700;font-size:14px;padding-top:10px}
 .time small{display:block;font-weight:500;font-size:12px;color:var(--muted)}
 .ev{flex:1;min-width:0;text-align:left;display:flex;flex-direction:column;gap:1px;border-radius:12px;padding:10px 14px;
@@ -347,6 +355,9 @@ input.in,select.in{font-size:16px}
       </div>
     </div>
     <div id="org-fields">
+      <div class="fld">
+        <label class="chk"><input type="checkbox" id="f-allday"> Todo el día (sin hora)</label>
+      </div>
       <div class="grid2">
         <div class="fld">
           <label for="f-type">Tipo</label>
@@ -963,7 +974,7 @@ function render(){
 function orgRow(t){
   var c=colorOf(t),s=subjectById(t.subject);
   return h('div',{class:'row'},
-    h('div',{class:'time'},t.start,t.end?h('small',null,t.end):null),
+    t.start?h('div',{class:'time'},t.start,t.end?h('small',null,t.end):null):null,
     h('button',{type:'button',class:'ev',style:cs(c),'data-fk':'ev'+t.id,onclick:function(){openEditor({id:t.id})}},
       h('span',{class:'ev-t'},t.title),
       h('span',{class:'ev-m'},[t.type,s&&s.name].filter(Boolean).join(' · '))));
@@ -991,6 +1002,17 @@ function dayBadge(key,todayKey){
   var t=parseKey(todayKey);
   var txt=key===todayKey?'Hoy':key===fmtKey(addDays(t,-1))?'Ayer':key===fmtKey(addDays(t,1))?'Mañana':'';
   return txt?h('span',{class:'badge'+(key===todayKey?'':' alt')},txt):null;
+}
+
+function agendaBody(org){
+  if(!org.length) return h('p',{class:'empty'},'Sin clases, seminarios ni prácticas este día.');
+  var timed=org.filter(function(t){return t.start}),allday=org.filter(function(t){return !t.start});
+  function col(title,list){
+    return h('div',{class:'acol'},title?h('h3',{class:'acol-h'},title):null,h('div',{class:'agenda'},list.map(orgRow)));
+  }
+  if(timed.length&&allday.length) return h('div',{class:'agenda2'},col('Por horas',timed),col('Todo el día',allday));
+  if(allday.length) return col('Todo el día',allday);
+  return h('div',{class:'agenda'},timed.map(orgRow));
 }
 
 function renderDay(idx,todayKey){
@@ -1026,8 +1048,7 @@ function renderDay(idx,todayKey){
     h('div',{class:'sec-head'},
       h('h2',null,'Agenda'),
       h('button',{type:'button',class:'ghost sm',onclick:function(){openEditor({kind:'org',date:key})}},'+ Organizada')),
-    it.org.length?h('div',{class:'agenda'},it.org.map(orgRow))
-      :h('p',{class:'empty'},'Sin clases, seminarios ni prácticas este día.')));
+    agendaBody(it.org)));
 
   var input=h('input',{id:'quick',class:'in',type:'text',autocomplete:'off',maxlength:300,'data-fk':'quick',
     'aria-label':'Nueva tarea abierta',placeholder:'Nueva tarea: estudiar tema 4 de Farmacología…',value:state.quickDraft,
@@ -1065,7 +1086,7 @@ function renderWeek(idx,todayKey){
         total?h('span',{class:'prog '+(done===total?'ok':'pend')},done+'/'+total):null);
       var evs=it.org.map(function(t){
         return h('button',{type:'button',class:'mini-ev',style:cs(colorOf(t)),'data-fk':'ev'+t.id,onclick:function(){openEditor({id:t.id})}},
-          h('b',null,t.start+(t.end?' – '+t.end:'')),h('span',null,t.title));
+          h('b',null,t.start?t.start+(t.end?' – '+t.end:''):'Todo el día'),h('span',null,t.title));
       });
       var tks=it.open.map(function(t){
         var s=subjectById(t.subject);
@@ -1102,7 +1123,7 @@ function renderMonth(idx,todayKey){
       grid.append(h('button',{type:'button',class:'mcell'+(out?' out':''),'aria-label':label,onclick:function(){goDay(d)}},
         h('span',{class:'mc-num'+(key===todayKey?' is-today':'')},d.getDate()),
         h('div',{class:'mc-pills'},
-          it.org.slice(0,3).map(function(t){return h('span',{class:'pill',style:cs(colorOf(t))},h('b',null,t.start),' '+t.title)}),
+          it.org.slice(0,3).map(function(t){return h('span',{class:'pill',style:cs(colorOf(t))},t.start?h('b',null,t.start):null,(t.start?' ':'')+t.title)}),
           it.org.length>3?h('span',{class:'more'},'+'+(it.org.length-3)+' más'):null),
         it.org.length?h('div',{class:'dots'},it.org.slice(0,6).map(function(t){return h('i',{style:cs(colorOf(t))})})):null,
         total?h('span',{class:'prog '+(done===total?'ok':'pend')},done+'/'+total):null));
@@ -1197,7 +1218,7 @@ SUBJECTS.forEach(function(s){
 var overlay=$('#overlay'),form=$('#form'),shell=$('#shell');
 var f={
   title:$('#f-title'),date:$('#f-date'),subject:$('#f-subject'),type:$('#f-type'),
-  start:$('#f-start'),end:$('#f-end'),rep:$('#f-rep'),weeks:$('#f-weeks'),err:$('#f-err'),del:$('#f-del')
+  start:$('#f-start'),end:$('#f-end'),allday:$('#f-allday'),rep:$('#f-rep'),weeks:$('#f-weeks'),err:$('#f-err'),del:$('#f-del')
 };
 var ed=null,lastFocus=null;
 
@@ -1239,6 +1260,12 @@ f.subject.addEventListener('change',function(){
 });
 f.rep.addEventListener('change',function(){$('#rep-n').hidden=!f.rep.checked});
 
+function syncAllday(){
+  var on=f.allday.checked;
+  f.start.closest('.fld').hidden=on;f.end.closest('.fld').hidden=on;
+}
+f.allday.addEventListener('change',syncAllday);
+
 function showErr(m){f.err.textContent=m;f.err.hidden=!m}
 function resetDel(){f.del.textContent='Eliminar';f.del.classList.remove('armed');if(ed) ed.armed=false}
 
@@ -1256,6 +1283,7 @@ function openEditor(opts){
   f.type.value=t&&t.type&&TYPES.indexOf(t.type)>=0?t.type:'Clase';
   f.start.value=t&&t.start?t.start:'09:00';
   f.end.value=t?t.end:'';
+  f.allday.checked=!!(t&&t.kind==='org'&&!t.start);syncAllday();
   var sc=subjectColor(f.subject.value);
   setColor(t&&t.kind==='org'&&t.color?t.color:sc);
   ed.touched=!!(t&&t.kind==='org'&&t.color&&t.color!==sc);
@@ -1305,9 +1333,10 @@ form.addEventListener('submit',async function(e){
     if(!title){showErr('Escribe qué tienes que hacer.');f.title.focus();return}
     data={kind:'open',title:title,date:date,subject:subject};
   }else{
-    var start=f.start.value,end=f.end.value,type=f.type.value;
-    if(!start){showErr('Indica la hora de inicio.');f.start.focus();return}
-    if(end&&end<=start){showErr('La hora de fin debe ser posterior a la de inicio.');f.end.focus();return}
+    var allday=f.allday.checked;
+    var start=allday?'':f.start.value,end=allday?'':f.end.value,type=f.type.value;
+    if(!allday&&!start){showErr('Indica la hora de inicio.');f.start.focus();return}
+    if(!allday&&end&&end<=start){showErr('La hora de fin debe ser posterior a la de inicio.');f.end.focus();return}
     var s=subjectById(subject);
     data={kind:'org',title:title||(s?type+' de '+s.name:type),date:date,subject:subject,color:getColor(),type:type,start:start,end:end};
   }
