@@ -35,6 +35,8 @@ body{margin:0}
   --pend-ink:#A5342B;
   --done:#2E8B57;
   --done-ink:#1D6B40;
+  --wait:#E0A126;
+  --wait-ink:#9A6A0B;
   --on-mix:#000000;
   --k-verde:#74AA4F;
   --k-azul:#4C84CC;
@@ -52,7 +54,7 @@ body{margin:0}
 @media (prefers-color-scheme: dark){
   :root:not([data-theme="light"]){
     --bg:#1B1814;--surface:#25211C;--surface-2:#2C2721;--line:#3B352C;--fg:#F2EBDD;--muted:#A89F8F;
-    --pend:#E8776C;--pend-ink:#F4A097;--done:#5CC389;--done-ink:#86D9AB;--on-mix:#FFFFFF;
+    --pend:#E8776C;--pend-ink:#F4A097;--done:#5CC389;--done-ink:#86D9AB;--wait:#EBB84A;--wait-ink:#EBB84A;--on-mix:#FFFFFF;
     --k-verde:#8CC46C;--k-azul:#6AA0E6;--k-lila:#A98BE0;--k-amarillo:#E3BE3F;--k-rosa:#F0A0AB;--k-naranja:#EFA564;--k-turquesa:#5CC4C0;--k-gris:#A8A296;
     --shadow:0 12px 40px rgba(0,0,0,.5);
     color-scheme:dark;
@@ -60,7 +62,7 @@ body{margin:0}
 }
 :root[data-theme="dark"]{
   --bg:#1B1814;--surface:#25211C;--surface-2:#2C2721;--line:#3B352C;--fg:#F2EBDD;--muted:#A89F8F;
-  --pend:#E8776C;--pend-ink:#F4A097;--done:#5CC389;--done-ink:#86D9AB;--on-mix:#FFFFFF;
+  --pend:#E8776C;--pend-ink:#F4A097;--done:#5CC389;--done-ink:#86D9AB;--wait:#EBB84A;--wait-ink:#EBB84A;--on-mix:#FFFFFF;
   --k-verde:#8CC46C;--k-azul:#6AA0E6;--k-lila:#A98BE0;--k-amarillo:#E3BE3F;--k-rosa:#F0A0AB;--k-naranja:#EFA564;--k-turquesa:#5CC4C0;--k-gris:#A8A296;
   --shadow:0 12px 40px rgba(0,0,0,.5);
   color-scheme:dark;
@@ -131,6 +133,15 @@ h1,h2,p{margin:0}
 .gval{flex:none;color:var(--muted);font-variant-numeric:tabular-nums}
 .gdel{flex:none;min-width:36px;min-height:36px;padding:0 10px;border-radius:9px;color:var(--muted);font-weight:700}
 .gdel.armed{background:var(--pend);color:#fff}
+.ghint{color:var(--muted);font-size:13px;margin:10px 0 0}
+.bar.gbar{display:flex}
+.bar.gbar i{flex:none;border-radius:0}
+.bar.gbar i.wait,.sw-wait{background:repeating-linear-gradient(135deg,var(--wait) 0 6px,color-mix(in srgb,var(--wait) 50%,var(--surface)) 6px 12px)}
+.glegend{display:flex;flex-wrap:wrap;gap:4px 16px;font-size:12px;color:var(--muted);margin:8px 0 0}
+.lk{display:inline-flex;align-items:center;gap:6px}
+.lk i{width:12px;height:12px;border-radius:3px;display:inline-block}
+.sw-ok{background:var(--done)}
+.gval.wait{color:var(--wait-ink);font-weight:600}
 .gnote{color:var(--muted);font-size:13px;text-align:center;margin:0}
 
 /* Tarjetas */
@@ -789,8 +800,9 @@ function colorOf(t){
 var grades=[];
 function cleanGrade(g){
   if(!g||typeof g.id!=='string'||typeof g.name!=='string'||!subjectById(g.subject)) return null;
-  var sc=+g.score,w=+g.weight;
-  if(!isFinite(sc)||sc<0||sc>10||!isFinite(w)||w<=0||w>100) return null;
+  var sc=(g.score===null||g.score===undefined||g.score==='')?null:+g.score,w=+g.weight;
+  if(sc!==null&&(!isFinite(sc)||sc<0||sc>10)) return null;
+  if(!isFinite(w)||w<=0||w>100) return null;
   return {id:g.id,subject:g.subject,name:g.name.slice(0,60),score:sc,weight:w,created:+g.created||0};
 }
 (function(){
@@ -808,9 +820,13 @@ function r2(n){return Math.round(n*100)/100}
 function fmtN(n){return r2(n).toLocaleString('es-ES',{maximumFractionDigits:2})}
 function gradeSummary(subjectId){
   var list=grades.filter(function(g){return g.subject===subjectId});
-  var w=0,pts=0;
-  list.forEach(function(g){w+=g.weight;pts+=g.score*g.weight/100});
-  return {list:list,w:r2(w),pts:pts};
+  var w=0,wp=0,pts=0;
+  list.forEach(function(g){
+    if(g.score===null) wp+=g.weight;
+    else{w+=g.weight;pts+=g.score*g.weight/100}
+  });
+  /* w: porcentaje con nota; wp: porcentaje pendiente de nota (examen hecho, sin calificación) */
+  return {list:list,w:r2(w),wp:r2(wp),tot:r2(w+wp),pts:pts};
 }
 var gDraft={id:null,subject:'',name:'',score:'',weight:''};
 var gErr='',gArm=null;
@@ -829,9 +845,10 @@ function renderNotas(){
   }
   var f2=h('form',{class:'card sec gform',novalidate:true,onsubmit:function(e){
     e.preventDefault();
-    var sc=parseNum(gDraft.score),w=parseNum(gDraft.weight);
+    var blank=gDraft.score.trim()==='';
+    var sc=blank?null:parseNum(gDraft.score),w=parseNum(gDraft.weight);
     if(!gDraft.subject) gErr='Elige la asignatura.';
-    else if(!(sc>=0&&sc<=10)) gErr='La nota tiene que estar entre 0 y 10 (por ejemplo 7,5).';
+    else if(!blank&&!(sc>=0&&sc<=10)) gErr='La nota tiene que estar entre 0 y 10 (por ejemplo 7,5), o déjala vacía si aún no la tienes.';
     else if(!(w>0&&w<=100)) gErr='El porcentaje tiene que ser mayor que 0 y como máximo 100.';
     else gErr='';
     if(gErr){render();return}
@@ -852,8 +869,9 @@ function renderNotas(){
     h('div',{class:'gfields'},
       h('label',{class:'gf gf-wide'},h('span',null,'Asignatura'),sel),
       field('name','Nombre','Parcial 1','text','g-name'),
-      field('score','Nota (0-10)','7,5','decimal','g-score'),
+      field('score','Nota (0-10)','Sin nota aún','decimal','g-score'),
       field('weight','% de la nota final','30','decimal','g-weight')),
+    h('p',{class:'ghint'},'Si ya hiciste el examen pero aún no tienes la nota, deja la nota vacía: contará como pendiente.'),
     gErr?h('p',{class:'gerr',role:'alert'},gErr):null,
     h('div',{class:'gbtns'},
       h('button',{type:'submit',class:'primary'},editing?'Guardar cambios':'Añadir nota'),
@@ -869,15 +887,17 @@ function renderNotas(){
 
 function subjectGradeCard(sub){
   var sm=gradeSummary(sub.id);
-  var complete=sm.w===100,over=sm.w>100,some=sm.list.length>0;
+  var complete=sm.tot===100&&sm.wp===0,over=sm.tot>100,some=sm.list.length>0;
   var card=h('section',{class:'card sec gcard',style:cs(sub.color)});
 
   var head=h('div',{class:'ghead'},
     h('h3',{class:'gtitle'},h('i',{class:'dot'}),sub.name));
   if(some){
-    head.append(h('div',{class:'gbig'+(complete?' ok':'')},
-      h('b',null,fmtN(sm.pts)),
-      h('small',null,complete?'Nota final':'puntos de 10 hasta ahora')));
+    head.append(sm.w>0
+      ?h('div',{class:'gbig'+(complete?' ok':'')},
+        h('b',null,fmtN(sm.pts)),
+        h('small',null,complete?'Nota final':'puntos de 10 hasta ahora'))
+      :h('div',{class:'gbig'},h('b',null,'–'),h('small',null,'sin ninguna nota todavía')));
   }
   card.append(head);
 
@@ -888,32 +908,49 @@ function subjectGradeCard(sub){
 
   var chip;
   if(complete) chip=h('p',{class:'gchip ok'},'Nota final calculada: los porcentajes suman el 100 %.');
-  else if(over) chip=h('p',{class:'gchip bad'},'Los porcentajes suman '+fmtN(sm.w)+' %, más del 100 %. Revisa los pesos.');
-  else chip=h('p',{class:'gchip bad'},'Nota no calculada del todo: llevas evaluado el '+fmtN(sm.w)+' % y falta el '+fmtN(100-sm.w)+' %.');
+  else if(over) chip=h('p',{class:'gchip bad'},'Los porcentajes suman '+fmtN(sm.tot)+' %, más del 100 %. Revisa los pesos.');
+  else if(sm.wp===0) chip=h('p',{class:'gchip bad'},'Nota no calculada del todo: llevas evaluado el '+fmtN(sm.w)+' % y falta el '+fmtN(100-sm.tot)+' %.');
+  else{
+    var bits=[];
+    if(sm.w>0) bits.push('con nota el '+fmtN(sm.w)+' %');
+    bits.push('pendiente de nota el '+fmtN(sm.wp)+' %');
+    if(sm.tot<100) bits.push('sin examinar el '+fmtN(100-sm.tot)+' %');
+    chip=h('p',{class:'gchip bad'},'Nota no calculada del todo: '+bits.join(', ')+'.');
+  }
   card.append(chip);
-  card.append(h('div',{class:'bar','aria-hidden':'true'},h('i',{style:'width:'+Math.min(100,sm.w)+'%'})));
+  var gw=Math.min(100,sm.w),pw=Math.min(100-gw,sm.wp);
+  card.append(h('div',{class:'bar gbar','aria-hidden':'true'},
+    h('i',{style:'width:'+gw+'%'}),
+    pw>0?h('i',{class:'wait',style:'width:'+pw+'%'}):null));
+  if(sm.wp>0){
+    card.append(h('p',{class:'glegend'},
+      h('span',{class:'lk'},h('i',{class:'sw-ok'}),'Con nota'),
+      h('span',{class:'lk'},h('i',{class:'sw-wait'}),'Pendiente de nota')));
+  }
 
-  if(!complete&&!over){
+  if(!complete&&!over&&sm.w>0){
     var media=sm.pts/(sm.w/100);
     var extra='Media de lo evaluado: '+fmtN(media)+'. ';
+    var resto=100-sm.w;
+    var restoTxt=sm.wp>0?'restante':'que falta';
     if(sm.pts>=5) extra+='Ya tienes el 5 asegurado.';
     else{
-      var need=(5-sm.pts)/((100-sm.w)/100);
+      var need=(5-sm.pts)/(resto/100);
       extra+=need>10?'Con lo que falta ya no se llega al 5.'
-        :'Para llegar al 5 necesitas una media de '+fmtN(Math.ceil(need*100)/100)+' en el '+fmtN(100-sm.w)+' % que falta.';
+        :'Para llegar al 5 necesitas una media de '+fmtN(Math.ceil(need*100)/100)+' en el '+fmtN(resto)+' % '+restoTxt+'.';
     }
     card.append(h('p',{class:'gextra'},extra));
   }
 
   var list=h('div',{class:'glist'});
   sm.list.forEach(function(g){
-    var armed=gArm===g.id;
+    var armed=gArm===g.id,pend=g.score===null;
     list.append(h('div',{class:'grow'},
       h('button',{type:'button',class:'gedit','data-fk':'ge'+g.id,'aria-label':'Editar '+g.name,onclick:function(){
-        gDraft={id:g.id,subject:g.subject,name:g.name,score:String(g.score).replace('.',','),weight:String(g.weight).replace('.',',')};
+        gDraft={id:g.id,subject:g.subject,name:g.name,score:pend?'':String(g.score).replace('.',','),weight:String(g.weight).replace('.',',')};
         gErr='';gArm=null;render();window.scrollTo({top:0,behavior:'smooth'});
       }},h('span',{class:'gname'},g.name),
-        h('span',{class:'gval'},fmtN(g.score)+' · '+fmtN(g.weight)+' %')),
+        h('span',{class:'gval'+(pend?' wait':'')},(pend?'Pendiente':fmtN(g.score))+' · '+fmtN(g.weight)+' %')),
       h('button',{type:'button',class:'gdel'+(armed?' armed':''),'aria-label':(armed?'Confirmar: eliminar ':'Eliminar ')+g.name,onclick:function(){
         if(armed){
           grades=grades.filter(function(x){return x.id!==g.id});
