@@ -93,8 +93,10 @@ function validarNota(raw: any) {
   if (!/^[A-Za-z0-9_-]+$/.test(id)) throw new Error("id no válido");
   const subject = texto(raw.subject, 20, "asignatura", true);
   if (!/^[a-z]+$/.test(subject)) throw new Error("asignatura no válida");
-  const score = numero(raw.score, "nota");
-  if (score < 0 || score > 10) throw new Error("nota no válida");
+  // La nota puede faltar: examen hecho pero todavía sin calificación.
+  const pendiente = raw.score === undefined || raw.score === null || raw.score === "";
+  const score = pendiente ? null : numero(raw.score, "nota");
+  if (score !== null && (score < 0 || score > 10)) throw new Error("nota no válida");
   const weight = numero(raw.weight, "porcentaje");
   if (!(weight > 0 && weight <= 100)) throw new Error("porcentaje no válido");
   const created = Number(raw.created);
@@ -102,14 +104,14 @@ function validarNota(raw: any) {
     id,
     subject,
     name: texto(raw.name, 60, "nombre") || "Nota",
-    score: Math.round(score * 100) / 100,
+    score: score === null ? null : Math.round(score * 100) / 100,
     weight: Math.round(weight * 100) / 100,
     created: Number.isFinite(created) && created >= 0 ? Math.floor(created) : 0,
   };
 }
 
 function notaAApp(f: any) {
-  return { id: f.id, subject: f.subject, name: f.name, score: Number(f.score), weight: Number(f.weight), created: Number(f.created) };
+  return { id: f.id, subject: f.subject, name: f.name, score: f.score === null || f.score === undefined ? null : Number(f.score), weight: Number(f.weight), created: Number(f.created) };
 }
 
 function aApp(f: any) {
