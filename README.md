@@ -18,7 +18,9 @@ Las tareas están en el proyecto **Agenda** de Supabase (tabla `tareas`). La tab
 - La app se sincroniza al abrirla, al volver a ella y cada 30 segundos.
 - Las tareas añadidas desde el chat con Claude se escriben en la misma tabla, así que aparecen en el móvil en la siguiente sincronización.
 - Cada hora, una tarea programada de Supabase (`arrastrar_pendientes`) pasa al día vigente las tareas abiertas y personales con fecha que quedaron sin hacer. El día cambia a las 3:00 (hora de Madrid). Las tareas organizadas (clases, seminarios) no se mueven.
-- La pestaña **Notas** guarda calificaciones por asignatura con su porcentaje en la nota final. Un examen ya hecho pero sin calificación se guarda como nota pendiente (nota vacía) y se pinta con otro color en la barra. Las notas están en la tabla `notas` de Supabase y se sincronizan igual que las tareas (copia local, cola de cambios pendientes). La función `tareas` atiende también las operaciones `notas_list`, `notas_upsert` y `notas_delete`.
+- La pestaña **Exámenes** tiene dos apartados: **Notas** y **Calendario**. Un examen programado (fecha, hora, asignatura, porcentaje y temas) es una fila de la tabla `notas` con fecha; mientras no llega su fecha está en el Calendario y, al pasar, la app lo muestra en Notas como pendiente de calificación (no hace falta ninguna tarea programada: se calcula en la app).
+- Las tareas organizadas ya no tienen «tipo» (clase, seminario…); si no llevan título se usa el nombre de la asignatura.
+- Notas: guarda calificaciones por asignatura con su porcentaje en la nota final. Un examen ya hecho pero sin calificación se guarda como nota pendiente (nota vacía) y se pinta con otro color en la barra. Las notas están en la tabla `notas` de Supabase y se sincronizan igual que las tareas (copia local, cola de cambios pendientes). La función `tareas` atiende también las operaciones `notas_list`, `notas_upsert` y `notas_delete`.
 
 ## Publicar
 
