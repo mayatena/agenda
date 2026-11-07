@@ -110,7 +110,7 @@ h1,h2,p{margin:0}
 .badge.alt{background:var(--surface-2);color:var(--muted);border:1px solid var(--line)}
 /* Notas */
 .notas{display:grid;gap:14px}
-.gfields{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.gfields{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px}
 .gf{display:flex;flex-direction:column;gap:4px;min-width:0}
 .gf>span{font-size:12px;font-weight:600;color:var(--muted)}
 .gf-wide{grid-column:1/-1}
@@ -133,6 +133,25 @@ h1,h2,p{margin:0}
 .gval{flex:none;color:var(--muted);font-variant-numeric:tabular-nums}
 .gdel{flex:none;min-width:36px;min-height:36px;padding:0 10px;border-radius:9px;color:var(--muted);font-weight:700}
 .gdel.armed{background:var(--pend);color:#fff}
+.exseg{margin-bottom:0}
+.gtext{min-height:76px;resize:vertical;font:inherit;line-height:1.4}
+.gdate{color:var(--muted);font-weight:500}
+.elist{display:grid;gap:10px}
+.emonth{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:700;margin:6px 0 0}
+.erow{display:flex;align-items:stretch;gap:10px;border-radius:14px;padding:10px;
+  background:color-mix(in srgb,var(--c) 13%,var(--surface));border:1px solid color-mix(in srgb,var(--c) 34%,var(--surface))}
+.edate{flex:none;width:50px;border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.1;
+  background:color-mix(in srgb,var(--c) 26%,var(--surface));color:color-mix(in srgb,var(--c) 52%,var(--on-mix))}
+.edate b{font-size:22px;font-variant-numeric:tabular-nums}
+.edate small{font-size:11px;font-weight:700;text-transform:uppercase}
+.ebody{flex:1;min-width:0;text-align:left;display:flex;flex-direction:column;gap:2px;padding:2px 0}
+.ename{font-weight:700;overflow-wrap:anywhere}
+.emeta{font-size:13px;color:var(--muted)}
+.etopics{font-size:13px;overflow-wrap:anywhere;white-space:pre-line;margin-top:2px}
+.eright{flex:none;display:flex;flex-direction:column;align-items:flex-end;justify-content:space-between;gap:6px}
+.ewhen{font-size:12px;font-weight:700;color:var(--muted)}
+.ewhen.soon{color:var(--pend-ink)}
+.ehint{color:var(--muted);font-size:13px;margin:12px 0 0}
 .ghint{color:var(--muted);font-size:13px;margin:10px 0 0}
 .bar.gbar{display:flex}
 .bar.gbar i{flex:none;border-radius:0}
@@ -324,7 +343,7 @@ input.in,select.in{font-size:16px}
       <div class="seg" role="group" aria-label="Sección">
         <button type="button" data-area="uni" aria-pressed="true">Universidad</button>
         <button type="button" data-area="personal" aria-pressed="false">Personal</button>
-        <button type="button" data-area="notas" aria-pressed="false">Notas</button>
+        <button type="button" data-area="examenes" aria-pressed="false">Exámenes</button>
       </div>
       <div class="seg" id="viewctl" role="group" aria-label="Vista">
         <button type="button" data-view="day" aria-pressed="true">Día</button>
@@ -376,23 +395,17 @@ input.in,select.in{font-size:16px}
       </div>
       <div class="grid2">
         <div class="fld">
-          <label for="f-type">Tipo</label>
-          <select id="f-type" class="in"></select>
-        </div>
-        <div class="fld">
           <label for="f-start">Hora de inicio</label>
           <input id="f-start" class="in" type="time">
         </div>
-      </div>
-      <div class="grid2">
         <div class="fld">
           <label for="f-end">Hora de fin (opcional)</label>
           <input id="f-end" class="in" type="time">
         </div>
-        <div class="fld">
-          <span class="lbl" id="color-l">Color</span>
-          <div class="swatches" id="swatches" role="radiogroup" aria-labelledby="color-l"></div>
-        </div>
+      </div>
+      <div class="fld">
+        <span class="lbl" id="color-l">Color</span>
+        <div class="swatches" id="swatches" role="radiogroup" aria-labelledby="color-l"></div>
       </div>
       <div class="fld" id="rep-wrap">
         <label class="chk"><input type="checkbox" id="f-rep"> Repetir cada semana</label>
@@ -442,7 +455,6 @@ var SUBJECTS=[
 ];
 var COLORS=[['verde','Verde'],['azul','Azul'],['lila','Lila'],['amarillo','Amarillo'],['rosa','Rosa'],['naranja','Naranja'],['turquesa','Turquesa'],['gris','Gris']];
 var COLOR_IDS=new Set(COLORS.map(function(c){return c[0]}));
-var TYPES=['Clase','Seminario','Práctica','Actividad'];
 var WD_SHORT=['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
 var WD_LONG=['lunes','martes','miércoles','jueves','viernes','sábado','domingo'];
 var MONTHS=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
@@ -530,7 +542,7 @@ var state={
   filter:null,
   quickDraft:'',
   quickSubject:'',
-  area:(pref('area')==='personal'||pref('area')==='notas')?pref('area'):'uni',
+  area:pref('area')==='personal'?'personal':(pref('area')==='examenes'||pref('area')==='notas')?'examenes':'uni',
   pDraft:'',
   pDate:'',
   lastKind:pref('kind')==='open'?'open':'org'
@@ -550,7 +562,7 @@ function clean(id,raw){
   };
 }
 function body(t){
-  return {kind:t.kind,title:t.title,date:t.date||'',subject:t.subject||'',color:t.color||'',type:t.type||'',start:t.start||'',end:t.end||'',done:!!t.done,created:t.created||Date.now()};
+  return {kind:t.kind,title:t.title,date:t.date||'',subject:t.subject||'',color:t.color||'',type:'',start:t.start||'',end:t.end||'',done:!!t.done,created:t.created||Date.now()};
 }
 
 function loadJson(key,fallback){
@@ -618,7 +630,7 @@ function removeTask(id){
 var gOutbox=new Map(); /* id -> {type:'upsert',nota} | {type:'delete'} */
 function saveGOutbox(){pref('goutbox',JSON.stringify(Array.from(gOutbox.entries())))}
 function gChanged(){saveGrades();saveGOutbox();render();sync()}
-function gBody(g){return {id:g.id,subject:g.subject,name:g.name,score:g.score,weight:g.weight,created:g.created||0}}
+function gBody(g){return {id:g.id,subject:g.subject,name:g.name,score:g.score,weight:g.weight,date:g.date||'',time:g.time||'',topics:g.topics||'',created:g.created||0}}
 async function syncNotas(){
   var snap=Array.from(gOutbox.entries());
   var ups=snap.filter(function(e){return e[1].type==='upsert'});
@@ -663,7 +675,7 @@ async function syncNotas(){
 var syncing=false,again=false;
 function sigOf(){
   var list=Array.from(tasks.values()).sort(function(a,b){return a.id<b.id?-1:1});
-  return JSON.stringify(list)+'|'+JSON.stringify(grades)+'|'+outbox.size+'|'+gOutbox.size+'|'+net.status+'|'+ready;
+  return JSON.stringify(list)+'|'+JSON.stringify(grades)+'|'+grades.filter(isUpcoming).length+'|'+outbox.size+'|'+gOutbox.size+'|'+net.status+'|'+ready;
 }
 async function enviar(){
   var snap=Array.from(outbox.entries());
@@ -768,9 +780,9 @@ function startApp(){
   ready=tasks.size>0||!getClave();
   render();
   sync();
-  document.addEventListener('visibilitychange',function(){if(!document.hidden) sync()});
+  document.addEventListener('visibilitychange',function(){if(!document.hidden){tickExams();sync()}});
   window.addEventListener('online',function(){sync()});
-  setInterval(function(){if(!document.hidden&&getClave()) sync()},30000);
+  setInterval(function(){if(document.hidden) return;tickExams();if(getClave()) sync()},30000);
 }
 
 /* ---------- Consultas ---------- */
@@ -794,6 +806,129 @@ function colorOf(t){
   return subjectColor(t.subject);
 }
 
+/* ---------- Exámenes: calendario y notas ---------- */
+/* Un examen es una nota con fecha. Mientras no ha llegado su fecha (y no tiene nota) está en el
+   Calendario; al pasar la fecha, pasa solo a Notas como pendiente de calificación. */
+var exSub=pref('exsub')==='cal'?'cal':'notas';
+var eDraft={id:null,subject:'',name:'',date:'',time:'',weight:'',topics:''};
+var eErr='',eArm=null;
+function emptyDraft(sub){return {id:null,subject:sub||'',name:'',date:'',time:'',weight:'',topics:''}}
+function examTime(g){
+  var d=parseKey(g.date);
+  if(g.time){var p=g.time.split(':');d.setHours(+p[0],+p[1],0,0)}
+  else d.setHours(23,59,59,999);
+  return d;
+}
+function isUpcoming(g){return g.score===null&&!!g.date&&examTime(g).getTime()>Date.now()}
+function daysUntil(g){return Math.round((parseKey(g.date).getTime()-startOfDay(new Date()).getTime())/86400000)}
+function shortDate(k){var d=parseKey(k);return d.getDate()+' '+MON3[d.getMonth()]}
+
+function renderExamenes(){
+  var wrap=h('div',{class:'notas'});
+  function tab(id,label){
+    return h('button',{type:'button','data-sub':id,'aria-pressed':String(exSub===id),onclick:function(){
+      exSub=id;pref('exsub',id);render();window.scrollTo(0,0);
+    }},label);
+  }
+  wrap.append(h('div',{class:'seg wide exseg',role:'group','aria-label':'Sección de exámenes'},tab('notas','Notas'),tab('cal','Calendario')));
+  if(exSub==='cal') calendarioInto(wrap); else notasInto(wrap);
+  return wrap;
+}
+
+function calendarioInto(wrap){
+  var editing=!!eDraft.id;
+  var sel=subjectSelect('e-subject',eDraft.subject,'Asignatura…');
+  sel.setAttribute('data-fk','e-subject');
+  sel.addEventListener('change',function(){eDraft.subject=sel.value});
+  function inp(key,label,ph,type,fk,cls,mode){
+    var upd=function(e){eDraft[key]=e.target.value};
+    return h('label',{class:'gf'+(cls?' '+cls:'')},h('span',null,label),
+      h('input',{class:'in',type:type,autocomplete:'off',placeholder:ph,inputmode:mode,maxlength:key==='name'?60:key==='weight'?6:null,
+        'data-fk':fk,value:eDraft[key],oninput:upd,onchange:upd}));
+  }
+  var topics=h('textarea',{class:'in gtext',rows:3,maxlength:500,placeholder:'Temas 1 a 5, seminarios 3 y 4…','data-fk':'e-topics',
+    oninput:function(e){eDraft.topics=e.target.value}},eDraft.topics);
+
+  var form2=h('form',{class:'card sec gform',novalidate:true,onsubmit:function(e){
+    e.preventDefault();
+    var w=parseNum(eDraft.weight);
+    if(!eDraft.subject) eErr='Elige la asignatura.';
+    else if(!/^\d{4}-\d{2}-\d{2}$/.test(eDraft.date)) eErr='Elige la fecha del examen.';
+    else if(!(w>0&&w<=100)) eErr='El porcentaje tiene que ser mayor que 0 y como máximo 100.';
+    else eErr='';
+    if(eErr){render();return}
+    var name=eDraft.name.trim()||'Examen',tps=eDraft.topics.trim().slice(0,500),saved;
+    if(eDraft.id){
+      saved=grades.find(function(x){return x.id===eDraft.id});
+      if(saved) Object.assign(saved,{subject:eDraft.subject,name:name,weight:w,date:eDraft.date,time:eDraft.time||'',topics:tps});
+    }else{
+      saved={id:'g'+newId(),subject:eDraft.subject,name:name,score:null,weight:w,date:eDraft.date,time:eDraft.time||'',topics:tps,created:Date.now()};
+      grades.push(saved);
+    }
+    if(saved) gOutbox.set(saved.id,{type:'upsert',nota:Object.assign({},saved)});
+    eDraft=emptyDraft(eDraft.subject);
+    gChanged();
+  }},
+    h('div',{class:'sec-head'},h('h2',null,editing?'Editar examen':'Añadir examen')),
+    h('div',{class:'gfields'},
+      h('label',{class:'gf gf-wide'},h('span',null,'Asignatura'),sel),
+      inp('name','Nombre','Parcial 3','text','e-name','gf-wide'),
+      inp('date','Fecha','','date','e-date'),
+      inp('time','Hora (opcional)','','time','e-time'),
+      inp('weight','% de la nota final','30','text','e-weight','','decimal'),
+      h('label',{class:'gf gf-wide'},h('span',null,'Temas (opcional)'),topics)),
+    eErr?h('p',{class:'gerr',role:'alert'},eErr):null,
+    h('div',{class:'gbtns'},
+      h('button',{type:'submit',class:'primary'},editing?'Guardar cambios':'Añadir examen'),
+      editing?h('button',{type:'button',class:'ghost',onclick:function(){eDraft=emptyDraft(eDraft.subject);eErr='';render()}},'Cancelar'):null));
+  wrap.append(form2);
+
+  var up=grades.filter(isUpcoming).sort(function(a,b){return (examTime(a)-examTime(b))||(a.created-b.created)});
+  var card=h('section',{class:'card sec'},
+    h('div',{class:'sec-head'},h('h2',null,'Próximos exámenes',up.length?h('span',null,String(up.length)):null)));
+  if(!up.length){
+    card.append(h('p',{class:'empty'},'No hay exámenes próximos. Añade uno arriba.'));
+  }else{
+    var list=h('div',{class:'elist'}),lastMonth='';
+    up.forEach(function(g){
+      var d=parseKey(g.date),mk=d.getFullYear()+'-'+d.getMonth();
+      if(mk!==lastMonth){
+        lastMonth=mk;
+        list.append(h('h3',{class:'emonth'},cap(MONTHS[d.getMonth()])+' '+d.getFullYear()));
+      }
+      list.append(examRow(g));
+    });
+    card.append(list);
+  }
+  card.append(h('p',{class:'ehint'},'Cuando pasa la fecha de un examen, pasa solo a Notas como pendiente de calificación.'));
+  wrap.append(card);
+}
+
+function examRow(g){
+  var sub=subjectById(g.subject),d=parseKey(g.date),n=daysUntil(g),armed=eArm===g.id;
+  var when=n<=0?'Hoy':n===1?'Mañana':'En '+n+' días';
+  var meta=[sub?sub.name:'',g.time||'',fmtN(g.weight)+' % de la nota'].filter(Boolean).join(' · ');
+  return h('div',{class:'erow',style:cs(sub?sub.color:'gris')},
+    h('div',{class:'edate','aria-hidden':'true'},h('small',null,WD_SHORT[wdi(d)]),h('b',null,String(d.getDate())),h('small',null,MON3[d.getMonth()])),
+    h('button',{type:'button',class:'ebody','data-fk':'ex'+g.id,'aria-label':'Editar '+g.name,onclick:function(){
+      eDraft={id:g.id,subject:g.subject,name:g.name,date:g.date,time:g.time||'',weight:String(g.weight).replace('.',','),topics:g.topics||''};
+      eErr='';eArm=null;render();window.scrollTo({top:0,behavior:'smooth'});
+    }},
+      h('span',{class:'ename'},g.name),
+      h('span',{class:'emeta'},meta),
+      g.topics?h('span',{class:'etopics'},g.topics):null),
+    h('div',{class:'eright'},
+      h('span',{class:'ewhen'+(n<=1?' soon':'')},when),
+      h('button',{type:'button',class:'gdel'+(armed?' armed':''),'aria-label':(armed?'Confirmar: eliminar ':'Eliminar ')+g.name,onclick:function(){
+        if(armed){
+          grades=grades.filter(function(x){return x.id!==g.id});
+          if(eDraft.id===g.id) eDraft=emptyDraft(eDraft.subject);
+          eArm=null;gOutbox.set(g.id,{type:'delete'});
+          gChanged();
+        }else{eArm=g.id;render()}
+      }},armed?'¿Seguro?':'✕')));
+}
+
 /* ---------- Notas y nota final ---------- */
 /* Se guardan en Supabase igual que las tareas (copia local + cambios pendientes de enviar). Cada nota: asignatura, nombre,
    calificación sobre 10 y porcentaje que pesa en la nota final de la asignatura. */
@@ -803,7 +938,10 @@ function cleanGrade(g){
   var sc=(g.score===null||g.score===undefined||g.score==='')?null:+g.score,w=+g.weight;
   if(sc!==null&&(!isFinite(sc)||sc<0||sc>10)) return null;
   if(!isFinite(w)||w<=0||w>100) return null;
-  return {id:g.id,subject:g.subject,name:g.name.slice(0,60),score:sc,weight:w,created:+g.created||0};
+  return {id:g.id,subject:g.subject,name:g.name.slice(0,60),score:sc,weight:w,created:+g.created||0,
+    date:/^\d{4}-\d{2}-\d{2}$/.test(g.date||'')?g.date:'',
+    time:/^\d{2}:\d{2}$/.test(g.time||'')?g.time:'',
+    topics:typeof g.topics==='string'?g.topics.slice(0,500):''};
 }
 (function(){
   try{
@@ -819,7 +957,7 @@ function parseNum(v){
 function r2(n){return Math.round(n*100)/100}
 function fmtN(n){return r2(n).toLocaleString('es-ES',{maximumFractionDigits:2})}
 function gradeSummary(subjectId){
-  var list=grades.filter(function(g){return g.subject===subjectId});
+  var list=grades.filter(function(g){return g.subject===subjectId&&!isUpcoming(g)});
   var w=0,wp=0,pts=0;
   list.forEach(function(g){
     if(g.score===null) wp+=g.weight;
@@ -831,8 +969,7 @@ function gradeSummary(subjectId){
 var gDraft={id:null,subject:'',name:'',score:'',weight:''};
 var gErr='',gArm=null;
 
-function renderNotas(){
-  var wrap=h('div',{class:'notas'});
+function notasInto(wrap){
 
   var editing=!!gDraft.id;
   var sel=subjectSelect('g-subject',gDraft.subject,'Asignatura…');
@@ -882,7 +1019,6 @@ function renderNotas(){
 
   SUBJECTS.forEach(function(sub){wrap.append(subjectGradeCard(sub))});
   wrap.append(h('p',{class:'gnote'},'Las notas se sincronizan igual que las tareas.'));
-  return wrap;
 }
 
 function subjectGradeCard(sub){
@@ -949,7 +1085,7 @@ function subjectGradeCard(sub){
       h('button',{type:'button',class:'gedit','data-fk':'ge'+g.id,'aria-label':'Editar '+g.name,onclick:function(){
         gDraft={id:g.id,subject:g.subject,name:g.name,score:pend?'':String(g.score).replace('.',','),weight:String(g.weight).replace('.',',')};
         gErr='';gArm=null;render();window.scrollTo({top:0,behavior:'smooth'});
-      }},h('span',{class:'gname'},g.name),
+      }},h('span',{class:'gname'},g.name,g.date?h('small',{class:'gdate'},' · '+shortDate(g.date)):null),
         h('span',{class:'gval'+(pend?' wait':'')},(pend?'Pendiente':fmtN(g.score))+' · '+fmtN(g.weight)+' %')),
       h('button',{type:'button',class:'gdel'+(armed?' armed':''),'aria-label':(armed?'Confirmar: eliminar ':'Eliminar ')+g.name,onclick:function(){
         if(armed){
@@ -965,7 +1101,12 @@ function subjectGradeCard(sub){
 }
 
 /* ---------- Render ---------- */
+/* Los exámenes cambian de apartado solos al pasar su fecha: se vigila el momento en que eso ocurre */
+var lastUp=-1;
+function tickExams(){if(grades.filter(isUpcoming).length!==lastUp) render()}
+
 function render(){
+  lastUp=grades.filter(isUpcoming).length;
   var ae=document.activeElement;
   var fk=ae&&ae.dataset?ae.dataset.fk:null;
   var ss=null,se=null;
@@ -974,10 +1115,10 @@ function render(){
   var todayKey=fmtKey(new Date());
   var c=state.cursor;
   var personal=state.area==='personal';
-  var notas=state.area==='notas';
+  var examenes=state.area==='examenes';
   var period='';
   if(personal) period='Fuera de la universidad';
-  else if(notas) period='Notas y nota final';
+  else if(examenes) period='Exámenes y notas';
   else if(state.view==='day'){var ws=startOfWeek(c);period='Semana · '+rangeText(ws,addDays(ws,6))}
   else if(state.view==='week'){var s=startOfWeek(c);period=rangeText(s,addDays(s,6))}
   else period=cap(MONTHS[c.getMonth()])+' '+c.getFullYear();
@@ -993,7 +1134,7 @@ function render(){
   document.querySelectorAll('[data-area]').forEach(function(b){
     b.setAttribute('aria-pressed',String(b.dataset.area===state.area));
   });
-  $('#viewctl').hidden=personal||notas;$('#navctl').hidden=personal||notas;$('#legend').hidden=personal||notas;$('#add').hidden=notas;
+  $('#viewctl').hidden=personal||examenes;$('#navctl').hidden=personal||examenes;$('#legend').hidden=personal||examenes;$('#add').hidden=examenes;
 
   var view=$('#view');
   if(!ready){
@@ -1001,7 +1142,7 @@ function render(){
     return;
   }
   var idx=buildIndex();
-  var node=notas?renderNotas():personal?renderPersonal():state.view==='day'?renderDay(idx,todayKey):state.view==='week'?renderWeek(idx,todayKey):renderMonth(idx,todayKey);
+  var node=examenes?renderExamenes():personal?renderPersonal():state.view==='day'?renderDay(idx,todayKey):state.view==='week'?renderWeek(idx,todayKey):renderMonth(idx,todayKey);
   view.replaceChildren(node);
 
   if(fk){
@@ -1019,7 +1160,7 @@ function orgRow(t){
     t.start?h('div',{class:'time'},t.start,t.end?h('small',null,t.end):null):null,
     h('button',{type:'button',class:'ev',style:cs(c),'data-fk':'ev'+t.id,onclick:function(){openEditor({id:t.id})}},
       h('span',{class:'ev-t'},t.title),
-      h('span',{class:'ev-m'},[t.type,s&&s.name].filter(Boolean).join(' · '))));
+      s?h('span',{class:'ev-m'},s.name):null));
 }
 function checkBtn(t,small){
   return h('button',{type:'button',class:'ck'+(small?' sm':''),role:'checkbox','aria-checked':String(!!t.done),
@@ -1259,14 +1400,13 @@ SUBJECTS.forEach(function(s){
 /* ---------- Editor ---------- */
 var overlay=$('#overlay'),form=$('#form'),shell=$('#shell');
 var f={
-  title:$('#f-title'),date:$('#f-date'),subject:$('#f-subject'),type:$('#f-type'),
+  title:$('#f-title'),date:$('#f-date'),subject:$('#f-subject'),
   start:$('#f-start'),end:$('#f-end'),allday:$('#f-allday'),rep:$('#f-rep'),weeks:$('#f-weeks'),err:$('#f-err'),del:$('#f-del')
 };
 var ed=null,lastFocus=null;
 
 f.subject.append(h('option',{value:''},'Sin asignatura'));
 SUBJECTS.forEach(function(s){f.subject.append(h('option',{value:s.id},s.name))});
-TYPES.forEach(function(t){f.type.append(h('option',{value:t},t))});
 COLORS.forEach(function(c){
   $('#swatches').append(h('label',{class:'sw',style:cs(c[0]),title:c[1]},
     h('input',{type:'radio',name:'color',value:c[0],'aria-label':c[1],onchange:function(){ed.touched=true}}),
@@ -1291,7 +1431,7 @@ function setKind(k){
     :k==='open'
     ?'Algo que hacer ese día, sin hora: estudiar un tema, hacer un trabajo…'
     :'Algo que no tiene que ver con la universidad: llamadas, recados, viajes…';
-  f.title.placeholder=k==='org'?'Opcional. Si lo dejas vacío se usa el tipo y la asignatura':k==='open'?'Por ejemplo: estudiar tema 4 de Farmacología':'Por ejemplo: llamar al dentista';
+  f.title.placeholder=k==='org'?'Opcional. Si lo dejas vacío se usa el nombre de la asignatura':k==='open'?'Por ejemplo: estudiar tema 4 de Farmacología':'Por ejemplo: llamar al dentista';
   $('#f-title-l').textContent=k==='org'?'Título (opcional)':'Título';
 }
 form.querySelectorAll('[data-kind]').forEach(function(b){
@@ -1322,7 +1462,6 @@ function openEditor(opts){
   f.title.value=t?t.title:'';
   f.date.value=t?t.date:(ed.kind==='personal'?'':(opts.date||fmtKey(state.cursor)));
   f.subject.value=t?t.subject:'';
-  f.type.value=t&&t.type&&TYPES.indexOf(t.type)>=0?t.type:'Clase';
   f.start.value=t&&t.start?t.start:'09:00';
   f.end.value=t?t.end:'';
   f.allday.checked=!!(t&&t.kind==='org'&&!t.start);syncAllday();
@@ -1376,11 +1515,12 @@ form.addEventListener('submit',async function(e){
     data={kind:'open',title:title,date:date,subject:subject};
   }else{
     var allday=f.allday.checked;
-    var start=allday?'':f.start.value,end=allday?'':f.end.value,type=f.type.value;
+    var start=allday?'':f.start.value,end=allday?'':f.end.value;
     if(!allday&&!start){showErr('Indica la hora de inicio.');f.start.focus();return}
     if(!allday&&end&&end<=start){showErr('La hora de fin debe ser posterior a la de inicio.');f.end.focus();return}
     var s=subjectById(subject);
-    data={kind:'org',title:title||(s?type+' de '+s.name:type),date:date,subject:subject,color:getColor(),type:type,start:start,end:end};
+    if(!title&&!s){showErr('Escribe un título o elige una asignatura.');f.title.focus();return}
+    data={kind:'org',title:title||s.name,date:date,subject:subject,color:getColor(),type:'',start:start,end:end};
   }
   if(kind!=='personal'){state.lastKind=kind;pref('kind',kind)}
 

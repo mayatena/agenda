@@ -100,10 +100,20 @@ function validarNota(raw: any) {
   const weight = numero(raw.weight, "porcentaje");
   if (!(weight > 0 && weight <= 100)) throw new Error("porcentaje no válido");
   const created = Number(raw.created);
+  const fecha = texto(raw.date, 10, "fecha");
+  if (fecha) {
+    const d = new Date(`${fecha}T00:00:00Z`);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha) || Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== fecha) {
+      throw new Error("fecha no válida");
+    }
+  }
   return {
     id,
     subject,
     name: texto(raw.name, 60, "nombre") || "Nota",
+    date: fecha || null,
+    start_time: hora(raw.time, "hora"),
+    topics: texto(raw.topics, 500, "temas"),
     score: score === null ? null : Math.round(score * 100) / 100,
     weight: Math.round(weight * 100) / 100,
     created: Number.isFinite(created) && created >= 0 ? Math.floor(created) : 0,
@@ -111,7 +121,7 @@ function validarNota(raw: any) {
 }
 
 function notaAApp(f: any) {
-  return { id: f.id, subject: f.subject, name: f.name, score: f.score === null || f.score === undefined ? null : Number(f.score), weight: Number(f.weight), created: Number(f.created) };
+  return { id: f.id, subject: f.subject, name: f.name, score: f.score === null || f.score === undefined ? null : Number(f.score), weight: Number(f.weight), date: f.date ?? "", time: f.start_time ?? "", topics: f.topics ?? "", created: Number(f.created) };
 }
 
 function aApp(f: any) {
@@ -202,7 +212,7 @@ Deno.serve(async (req: Request) => {
   } catch (e) {
     const mensaje = e instanceof Error ? e.message : "Error";
     // Errores de validación (los lanzamos nosotros) se devuelven; los de base de datos se ocultan.
-    const esValidacion = /^(Falta|Tarea|Nota|Tipo|id |fecha|asignatura|color|título|hora|tipo|nota|porcentaje|nombre)/.test(mensaje) ||
+    const esValidacion = /^(Falta|Tarea|Nota|Tipo|id |fecha|asignatura|color|título|hora|tipo|nota|porcentaje|nombre|temas)/.test(mensaje) ||
       /no es válid|no válid|demasiado largo/.test(mensaje);
     if (esValidacion) return json({ error: mensaje }, 400);
     console.error("Error en la función tareas:", e);
