@@ -2,6 +2,13 @@
 [build]
   publish = "app"
 
+# Las vistas previas de cada PR gastan créditos del plan gratuito: no se construyen.
+[context.deploy-preview]
+  ignore = "exit 0"
+
+[context.branch-deploy]
+  ignore = "exit 0"
+
 [[headers]]
   for = "/sw.js"
   [headers.values]
